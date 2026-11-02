@@ -8,14 +8,23 @@
 <script src="/app.js" defer></script>
 </head>
 <body>
-<header>
-  <h1>Trade Dashboard</h1>
-  <span class="sub">read only &middot; <span id="now">loading...</span> &middot; <span id="conn"></span></span>
+<header class="top">
+  <div class="brand">
+    <span class="logo" aria-hidden="true">◆</span>
+    <div>
+      <h1>Trade Dashboard</h1>
+      <div class="sub">Read only · it never trades or changes anything</div>
+    </div>
+  </div>
+  <div class="clock">
+    <span id="conn" class="conn"><span class="dot"></span><span id="conntext">Connecting…</span></span>
+    <span id="now"></span>
+  </div>
 </header>
 <nav id="tiles" aria-label="Bots"></nav>
 <main id="panel"></main>
 <dialog id="detail">
-  <div class="dhead"><h2 id="dtitle"></h2><button id="dclose" type="button">Close</button></div>
+  <div class="dhead"><h2 id="dtitle"></h2><button id="dclose" type="button" aria-label="Close">✕</button></div>
   <div id="dbody"></div>
 </dialog>
 </body>

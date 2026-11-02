@@ -50,7 +50,7 @@ def result(pos: dict) -> tuple[Decimal | None, Decimal | None]:
 def read_plan(paths: dict, coid: str) -> tuple[dict | None, str]:
     """(plan, problem). The plan file must exist, be JSON and name the same order id."""
     if not COID_RE.match(coid or ""):
-        return None, "order id is not a plain file name"
+        return None, "the order ID is not a plain file name"
     try:
         data = safe.read_json(paths["plans"] / f"{coid}.json", 64 * 1024)
     except safe.ReadError as exc:
@@ -70,47 +70,47 @@ def guardian_ok(paths: dict, now: datetime, limit_s: float) -> tuple[bool, str]:
     except safe.ReadError as exc:
         return False, str(exc)
     if not isinstance(hb, dict) or "at" not in hb:
-        return False, "Guardian heartbeat missing, starting or stopped"
+        return False, "Guardian's heartbeat is missing, starting or stopped"
     at = times.parse(hb.get("at"))
     if at is None or abs((now - at).total_seconds()) > limit_s:
-        return False, "Guardian heartbeat stale"
+        return False, "Guardian's heartbeat is stale"
     if hb.get("unprotected") != 0:
         return False, f"Guardian reports {hb.get('unprotected')} unprotected"
-    return True, "Guardian running, 0 unprotected"
+    return True, "Guardian running, nothing unprotected"
 
 
 def protection(pos: dict, plan_problem: str, pilot_live: bool, guardian: tuple[bool, str]) -> tuple[str, list[str]]:
-    """PROTECTED when all five checks pass (DESIGN.md 4.5), else AT RISK naming the failures."""
+    """Protected when all five checks pass (DESIGN.md 4.5), else At risk naming the failures."""
     tags = pos.get("tags") or []
     fails = []
     if plan_problem or PLAN_UNREADABLE_TAG in tags:
-        fails.append(f"plan: {plan_problem or 'unreadable when Pilot restored it'}")
+        fails.append(v.sentence(plan_problem) if plan_problem else "Plan unreadable when Pilot restored it")
     if v.dec(pos.get("stop")) is None:
-        fails.append("no stop set")
+        fails.append("No stop set")
     if not pilot_live:
         fails.append("Pilot not live (report stale or missing), so the stop is not being watched")
     if not guardian[0]:
         fails.append(guardian[1])
     if NO_QUOTE_TAG in tags:
-        fails.append("no usable quote for 60 s")
-    return ("PROTECTED" if not fails else "AT RISK"), fails
+        fails.append("No usable quote for 60 s")
+    return ("Protected" if not fails else "At risk"), fails
 
 
 def build(cfg: Config, now: datetime) -> dict:
     p = v.panel("pilot", "Pilot (paper)")
     paths = _paths(cfg)
     if not safe.exists(cfg.pilot_dir):
-        p["reason"] = f"{cfg.pilot_dir} not found (Pilot is not installed yet)"
-        p["headline"] = "not installed"
+        p["reason"] = f"{cfg.pilot_dir} not found: Pilot isn't installed yet"
+        p["headline"] = "Not installed yet"
         return p
     written = safe.mtime(paths["live"])
     if written is None:
-        p["badge"], p["reason"] = v.NO_DATA, "pilot-live.md not found"
+        p["badge"], p["reason"] = v.NO_DATA, "Pilot's live report (pilot-live.md) not found"
     else:
-        v.freshness(p, datetime.fromtimestamp(written, timezone.utc), now, cfg.pilot_stale_s, "live report")
-    v.fact(p, "Running (lock file)", safe.exists(paths["lock"]))
+        v.freshness(p, datetime.fromtimestamp(written, timezone.utc), now, cfg.pilot_stale_s, "Live report")
+    v.fact(p, "Running", safe.exists(paths["lock"]))
     stop = safe.exists(paths["stop"])
-    v.fact(p, "PILOT_STOP", "present: no new entries" if stop else "none", "warn" if stop else "")
+    v.fact(p, "PILOT_STOP file", "Present: no new entries" if stop else "None", "warn" if stop else "")
     pilot_live = p["badge"] == v.LIVE
     guardian = guardian_ok(paths, now, cfg.guardian_stale_s)
     v.fact(p, "Guardian (for protection)", guardian[1], "good" if guardian[0] else "bad")
@@ -137,20 +137,20 @@ def _trades(p: dict, paths: dict, pilot_live: bool, guardian: tuple[bool, str]) 
             open_n += 1
             _, problem = read_plan(paths, r["coid"])
             status, fails = protection(pos, problem, pilot_live, guardian)
-            at_risk += status != "PROTECTED"
+            at_risk += status != "Protected"
             prot = status + (": " + "; ".join(fails) if fails else "")
         else:
-            prot = "closed"
-        out.append([pos.get("symbol"), "open" if is_open else "closed", pos.get("setup_name"),
+            prot = "Closed"
+        out.append([pos.get("symbol"), "Open" if is_open else "Closed", v.nice(pos.get("setup_name")),
                     times.show_short(pos.get("opened_at")), v.price(pos.get("entry")), pos.get("qty"),
                     pos.get("remaining"), v.price(pos.get("stop")), v.price(pos.get("guardian_stop")),
                     v.price(pos.get("chart_stop")), v.price(pos.get("target")), v.usd(pos.get("risk_usd")),
-                    v.usd(pnl), v.num(rr), pos.get("tags"), prot])
+                    v.usd(pnl), v.num(rr), v.nice(pos.get("tags")), prot])
         keys.append(r["coid"])
-    p["headline"] = f"{open_n} open paper trade(s)" + (f", {at_risk} AT RISK" if at_risk else "")
+    p["headline"] = f"{open_n} open paper trade{'' if open_n == 1 else 's'}" + (f" · {at_risk} at risk" if at_risk else "")
     p["alert"] = at_risk > 0
     p["tables"].append(v.table(
-        f"Paper trades (open, then closed on {day or 'no day yet'})",
+        f"Paper trades · open, then closed {times.show_date(day) or '(none yet)'}",
         ["Symbol", "State", "Setup", "Opened", "Entry", "Qty", "Left", "Stop now", "Guardian-rule stop",
          "Chart stop", "Target", "Risk $", "P&L $", "R", "Tags", "Protection"],
         out, keys, note="" if out else "No paper trades yet."))
@@ -162,9 +162,9 @@ def _decisions(p: dict, paths: dict) -> None:
         day = conn.execute("SELECT MAX(trading_day) FROM decisions").fetchone()[0]
         rows = conn.execute("SELECT at, symbol, session, taken, reason FROM decisions WHERE trading_day = ? "
                             "ORDER BY at DESC LIMIT 200", (day,)).fetchall()
-    p["tables"].append(v.table(f"Decisions ({day or 'none yet'}), newest first, last 200",
+    p["tables"].append(v.table(f"Decisions · {times.show_date(day) or 'none yet'} · newest first",
                                ["Time", "Symbol", "Session", "Taken", "Reason"],
-                               [[times.show_short(r["at"]), r["symbol"], r["session"], bool(r["taken"]), r["reason"]]
+                               [[times.show_short(r["at"]), r["symbol"], v.nice(r["session"]), bool(r["taken"]), v.nice(r["reason"])]
                                 for r in rows], note="" if rows else "None yet."))
 
 
@@ -172,7 +172,7 @@ def _live(p: dict, paths: dict) -> None:
     body = safe.read_text(paths["live"])
     if body is None:
         raise FileNotFoundError(paths["live"])
-    v.text(p, "Pilot's live report (status, watch list, the gate), as written", body)
+    v.text(p, "Pilot's live report: status, watch list and the gate (as Pilot wrote it)", body)
 
 
 def detail(cfg: Config, key: str) -> dict:
@@ -189,17 +189,17 @@ def detail(cfg: Config, key: str) -> dict:
             dec = conn.execute("SELECT at, reason, setup_json, sizing_json, input_ages_json FROM decisions "
                                "WHERE symbol = ? AND taken = 1 AND at <= ? ORDER BY at DESC LIMIT 1",
                                (pos.get("symbol"), pos.get("opened_at"))).fetchone()
-    d = v.detail(f"Pilot paper trade {pos.get('symbol', '')} ({key})")
+    d = v.detail(f"Pilot paper trade · {pos.get('symbol', '')}")
     if not pos:
-        d["facts"].append(["Trade", "not found", "warn"])
+        d["facts"].append(["Trade", "Not found", "warn"])
         return d
     pnl, rr = result(pos)
     for k in ("symbol", "trading_day", "session", "setup_name", "entry", "qty", "remaining", "stop", "guardian_stop",
               "chart_stop", "target", "risk_usd", "fees_usd", "tags", "carried", "high", "low"):
         val = pos.get(k)
-        d["facts"].append([k.replace("_", " ").capitalize(),
+        d["facts"].append([v.nice(k),
                            v.price(val) if k in ("entry", "stop", "guardian_stop", "chart_stop", "target", "high", "low")
-                           else v.cell(val), ""])
+                           else v.cell(v.nice(val) if k in ("session", "setup_name", "tags") else val), ""])
     d["facts"] += [["Opened", times.show(pos.get("opened_at")), ""], ["Closed", times.show(pos.get("closed_at")), ""],
                    ["P&L $ (after fees)", v.usd(pnl), ""], ["R", v.num(rr), ""]]
     if pos.get("closed_at") is None:
@@ -210,22 +210,36 @@ def detail(cfg: Config, key: str) -> dict:
         status, fails = protection(pos, problem, live, guardian_ok(paths, now, cfg.guardian_stale_s))
         d["facts"].insert(0, ["Protection", status + (": " + "; ".join(fails) if fails else ""),
                               "good" if not fails else "bad"])
+        d["facts"].insert(1, ["Order ID", key, ""])
     gp = pos.get("guardian_plan") if isinstance(pos.get("guardian_plan"), dict) else {}
     if gp:
-        d["tables"].append(v.table("Guardian's rules applied to this paper trade", ["Field", "Value"],
-                                   [[k, times.show(gp[k]) if k.endswith("_at") else v.cell(gp[k])]
+        d["tables"].append(v.table("Guardian's rules applied to this paper trade", ["", ""],
+                                   [[v.nice(k), times.show(gp[k]) if k.endswith("_at") else v.price(gp[k]) if k in ("stop", "initial_stop", "r", "hwm", "atr") else v.cell(gp[k])]
                                     for k in ("stop", "initial_stop", "r", "hwm", "atr", "breakeven_armed",
                                               "partial_done", "flatten_at", "first_buy_at") if k in gp]))
     d["tables"].append(v.table("Exits", ["Time", "Qty", "Price", "Reason", "Trigger"],
-                               [[times.show_short(e.get("at")), e.get("qty"), v.price(e.get("price")), e.get("reason"),
+                               [[times.show_short(e.get("at"), seconds=True), e.get("qty"), v.price(e.get("price")), v.nice(e.get("reason")),
                                  v.price(e.get("trigger"))] for e in pos.get("exits") or [] if isinstance(e, dict)]))
     plan, problem = read_plan(paths, key)
-    d["texts"].append({"title": "Plan file", "text": json.dumps(plan, indent=1) if plan else f"problem: {problem}"})
+    if plan:
+        targets = "; ".join(f"{v.price(t.get('price'))} for {v.pct(t.get('fraction'))} of the shares"
+                            for t in plan.get("targets") or [] if isinstance(t, dict))
+        sell_by = plan.get("sell_by") if isinstance(plan.get("sell_by"), dict) else None
+        d["tables"].append(v.table("Plan file", ["", ""], [
+            ["Created", times.show(plan.get("created_utc"))], ["Mode", v.nice(plan.get("mode"))],
+            ["Setup", v.nice(plan.get("setup"))], ["Entry limit", v.price(plan.get("entry_limit"))],
+            ["Stop", v.price(plan.get("stop"))], ["Targets", targets or "None"],
+            ["Sell by", f"{sell_by.get('minutes_after_entry')} minutes after entry" if sell_by else "No time limit"],
+            ["Carry into after hours", (plan.get("carry") or {}).get("allowed")],
+            ["Hold overnight", (plan.get("hold") or {}).get("allowed")]]))
+    else:
+        d["tables"].append(v.table("Plan file", [], [], note=f"Problem: {problem}"))
     if dec is not None:
-        d["texts"].append({"title": f"Decision that took it ({times.show(dec['at'])})",
-                           "text": json.dumps({"setup": _load(dec["setup_json"]), "sizing": _load(dec["sizing_json"]),
-                                               "input_ages_s": _load(dec["input_ages_json"])}, indent=1)})
+        d["tables"].append(v.kv_table(f"Setup when Pilot took it · {times.show_short(dec['at'], seconds=True)}",
+                                      _load(dec["setup_json"])))
+        d["tables"].append(v.kv_table("Sizing", _load(dec["sizing_json"])))
+        d["tables"].append(v.kv_table("Age of each input (seconds)", _load(dec["input_ages_json"])))
     if m is not None:
-        d["texts"].append({"title": "Measures", "text": json.dumps({"entry": _load(m["entry_json"]),
-                                                                    "after": _load(m["after_json"])}, indent=1)})
+        d["tables"].append(v.kv_table("Measures at entry", _load(m["entry_json"])))
+        d["tables"].append(v.kv_table("Measures after the trade", _load(m["after_json"])))
     return d

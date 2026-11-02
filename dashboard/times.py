@@ -22,27 +22,44 @@ def parse(text: object) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
+def clock(dt: datetime, seconds: bool = False) -> str:
+    """'8:38 am' (or '8:38:24 am')."""
+    text = f"{dt.hour % 12 or 12}:{dt.minute:02d}" + (f":{dt.second:02d}" if seconds else "")
+    return text + (" am" if dt.hour < 12 else " pm")
+
+
+def _day(et: datetime) -> str:
+    """'' today (ET), else 'Sat 31 Oct, '."""
+    now_et = datetime.now(timezone.utc).astimezone(ET)
+    return "" if et.date() == now_et.date() else f"{et:%a} {et.day} {et:%b}, "
+
+
 def show(value: object) -> str:
-    """'09:31:05 ET (23:31 Bris)', with the ET date when it is not today in ET."""
+    """'Sat 31 Oct, 8:38:24 am ET (10:38 pm Brisbane)'; the date is left out for today in ET."""
     dt = value if isinstance(value, datetime) else parse(value)
     if dt is None:
         return "" if value in (None, "") else str(value)
     et = dt.astimezone(ET)
-    bris = dt.astimezone(BRISBANE)
-    now_et = datetime.now(timezone.utc).astimezone(ET)
-    day = "" if et.date() == now_et.date() else et.strftime("%a %d %b ")
-    return f"{day}{et:%H:%M:%S} ET ({bris:%H:%M} Bris)"
+    return f"{_day(et)}{clock(et, seconds=True)} ET ({clock(dt.astimezone(BRISBANE))} Brisbane)"
 
 
-def show_short(value: object) -> str:
-    """'09:31 ET' for table cells."""
+def show_short(value: object, seconds: bool = False) -> str:
+    """'8:38 am' for table cells (ET), with '31 Oct, ' before it when it is not today."""
     dt = value if isinstance(value, datetime) else parse(value)
     if dt is None:
         return "" if value in (None, "") else str(value)
     et = dt.astimezone(ET)
-    now_et = datetime.now(timezone.utc).astimezone(ET)
-    day = "" if et.date() == now_et.date() else et.strftime("%d %b ")
-    return f"{day}{et:%H:%M:%S}"
+    day = _day(et)
+    return (day.split(" ", 1)[1] if day else "") + clock(et, seconds)
+
+
+def show_date(value: object) -> str:
+    """'2026-11-02' -> 'Mon 2 Nov'."""
+    try:
+        d = date.fromisoformat(str(value))
+    except ValueError:
+        return "" if value in (None, "") else str(value)
+    return f"{d:%a} {d.day} {d:%b}"
 
 
 def et_today(now: datetime) -> date:

@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
+import socket
 import threading
 import time
 import webbrowser
@@ -120,10 +122,21 @@ def make_handler(app: Dashboard, port: int) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
+class LocalServer(ThreadingHTTPServer):
+    """Refuses a port another program already listens on. Python's default (SO_REUSEADDR) lets a
+    second copy listen on the same port on Windows, so a second start would not fail."""
+
+    allow_reuse_address = os.name != "nt"
+    daemon_threads = True
+
+    def server_bind(self) -> None:
+        if os.name == "nt":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def serve(cfg: Config) -> ThreadingHTTPServer:
-    server = ThreadingHTTPServer(("127.0.0.1", cfg.port), make_handler(Dashboard(cfg), cfg.port))
-    server.daemon_threads = True
-    return server
+    return LocalServer(("127.0.0.1", cfg.port), make_handler(Dashboard(cfg), cfg.port))
 
 
 def _setup_logging(root: Path) -> None:

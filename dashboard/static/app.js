@@ -1,6 +1,29 @@
 "use strict";
 // Renders the server's panels. All bot and web text goes in through textContent, never as HTML.
 
+const BOTS = {
+  guardian: { icon: "🛡️", blurb: "Protects and sells your positions" },
+  radar: { icon: "📡", blurb: "Screens the market for movers" },
+  scout: { icon: "🔭", blurb: "News and market context" },
+  pilot: { icon: "✈️", blurb: "Paper buyer (practice trades)" },
+};
+const BADGES = { "LIVE": ["Live", "live"], "STALE": ["Stale", "stale"], "ERROR": ["Error", "error"],
+  "STOPPED": ["Stopped", "grey"], "STARTING": ["Starting", "stale"], "NO DATA": ["No data", "grey"] };
+
+// Columns whose values show as coloured pills, and how each value is coloured.
+const PILL_COLS = new Set(["Level", "Status", "Protection", "State", "Taken", "Enabled", "Gap open", "Stale",
+  "Halt open", "Breakeven armed", "Shadow", "Class", "Session", "Type", "Fresh catalyst",
+  "Event before next session", "Macro next session", "Kind", "Why"]);
+const BAD_WHEN_YES = new Set(["Gap open", "Stale", "Halt open", "Shadow"]);
+const TIME_COL = /^(time|found|opened|created|first|first seen|first buy|last ok|last seen|updated|closed|written|expires|flatten at)/i;
+const SIGNED_COLS = new Set(["P&L $", "R", "Change"]);
+const RED = ["error", "critical", "at risk", "stopped", "rejected", "stale", "http error", "timeout", "unprotected"];
+const AMBER = ["warning", "starting", "intent", "pending", "partial", "unknown", "backoff"];
+const GREEN = ["ok", "working", "protected", "open", "live", "running", "filled", "yes", "managed", "breakeven",
+  "target"];
+const BLUE = ["pre-market", "regular hours", "after hours", "overnight", "wire", "filing", "stop", "r step",
+  "atr trail", "pct trail", "initial", "flatten"];
+
 const state = { data: null, bot: (location.hash || "#guardian").slice(1), filters: {}, timer: null };
 
 function el(tag, cls, text) {
@@ -10,35 +33,67 @@ function el(tag, cls, text) {
   return e;
 }
 
-function badgeClass(b) {
-  return { "LIVE": "live", "STALE": "stale", "ERROR": "error" }[b] || "grey";
+function tone(col, value) {
+  const v = value.toLowerCase();
+  if (!v) return "";
+  if (BAD_WHEN_YES.has(col)) return v === "yes" ? "red" : "muted";
+  if (col === "Protection" && v === "closed") return "muted";
+  if (v === "no" || v === "closed" || v === "disabled") return "muted";
+  if (RED.some((w) => v.startsWith(w))) return "red";
+  if (AMBER.some((w) => v.startsWith(w))) return "amber";
+  if (GREEN.some((w) => v.startsWith(w))) return "green";
+  if (BLUE.some((w) => v.startsWith(w))) return "blue";
+  return "violet";
 }
 
-function cellNode(text) {
+function badge(code) {
+  const [text, cls] = BADGES[code] || [code, "grey"];
+  const b = el("span", "badge " + cls);
+  b.append(el("span", "bdot"), document.createTextNode(text));
+  return b;
+}
+
+function cellNode(col, text) {
   if (/^https?:\/\/\S+$/.test(text)) {
-    const a = el("a", null, "open");
+    const a = el("a", "link", "Open ↗");
     a.href = text; a.target = "_blank"; a.rel = "noopener noreferrer";
     return a;
+  }
+  if (PILL_COLS.has(col) && text) {
+    if (col === "Protection" && text.includes(": ")) {
+      const [head, rest] = [text.slice(0, text.indexOf(": ")), text.slice(text.indexOf(": ") + 2)];
+      const wrap = el("span");
+      wrap.append(el("span", "pill " + tone(col, head), head), el("span", "why", rest));
+      return wrap;
+    }
+    return el("span", "pill " + tone(col, text), text);
+  }
+  if (SIGNED_COLS.has(col) && /^[-+]?[\d,.]+%?$/.test(text)) {
+    const n = parseFloat(text.replace(/,/g, ""));
+    return el("span", n > 0 ? "pos" : n < 0 ? "neg" : "", (n > 0 ? "+" : "") + text);
   }
   return document.createTextNode(text);
 }
 
 function renderFacts(facts) {
-  const dl = el("dl", "facts");
+  const grid = el("div", "stats");
   for (const [label, value, level] of facts) {
-    dl.append(el("dt", null, label));
-    dl.append(el("dd", level || null, value === "" ? "–" : value));
+    const card = el("div", "stat " + (level || ""));
+    card.append(el("div", "slabel", label), el("div", "svalue", value === "" ? "–" : value));
+    grid.append(card);
   }
-  return dl;
+  return grid;
 }
 
 function renderTable(t, bot, filterId) {
-  const box = el("section", "tbl");
-  const head = el("div", "thead");
-  head.append(el("h3", null, t.title));
+  const box = el("section", "card");
+  const head = el("div", "chead");
+  const h = el("h3", null, t.title);
+  if (t.rows.length) h.append(el("span", "count", t.rows.length));
+  head.append(h);
   let input = null;
   if (t.rows.length > 5) {
-    input = el("input"); input.type = "search"; input.placeholder = "filter...";
+    input = el("input"); input.type = "search"; input.placeholder = "Filter…";
     input.value = state.filters[filterId] || "";
     head.append(input);
   }
@@ -47,22 +102,30 @@ function renderTable(t, bot, filterId) {
   if (!t.rows.length) return box;
   const wrap = el("div", "scroll");
   const table = el("table");
-  const tr = el("tr");
-  for (const c of t.columns) tr.append(el("th", null, c));
-  const thead = el("thead");
-  thead.append(tr);
-  table.append(thead);
+  const plain = t.columns.every((c) => c === "");
+  if (plain) table.className = "kv";
+  else {
+    const thead = el("thead");
+    const tr = el("tr");
+    for (const c of t.columns) tr.append(el("th", null, c));
+    thead.append(tr);
+    table.append(thead);
+  }
   const body = el("tbody");
   t.rows.forEach((row, i) => {
     const r = el("tr");
-    for (const c of row) { const td = el("td"); td.append(cellNode(c)); r.append(td); }
+    row.forEach((c, j) => {
+      const td = el("td", TIME_COL.test(t.columns[j]) ? "nowrap" : null);
+      td.append(cellNode(t.columns[j], c));
+      r.append(td);
+    });
     const key = t.keys[i];
     if (key && bot) {
       r.className = "click"; r.tabIndex = 0; r.title = "Click for details";
       r.addEventListener("click", (ev) => { if (ev.target.tagName !== "A") openDetail(bot, key); });
       r.addEventListener("keydown", (ev) => { if (ev.key === "Enter") openDetail(bot, key); });
     }
-    if (row.some((c) => c.startsWith("AT RISK"))) r.classList.add("risk");
+    if (row.some((c) => c.startsWith("At risk"))) r.classList.add("risk");
     body.append(r);
   });
   table.append(body);
@@ -80,12 +143,59 @@ function renderTable(t, bot, filterId) {
   return box;
 }
 
-function renderTexts(texts) {
+// A small, safe Markdown view for the bots' own reports: headings, bullets, tables and **bold**.
+function inline(parent, text) {
+  text.split(/(\*\*[^*]+\*\*)/).forEach((part) => {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) parent.append(el("strong", null, part.slice(2, -2)));
+    else if (part) parent.append(document.createTextNode(part.replace(/`/g, "")));
+  });
+}
+
+function markdown(text) {
+  const out = el("div", "md");
+  const lines = text.split(/\r?\n/);
+  let list = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*\|/.test(line)) {
+      const rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++]);
+      i--;
+      const cells = (l) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+      const table = el("table");
+      const body = el("tbody");
+      rows.filter((r) => !/^\s*\|[\s:|-]+\|\s*$/.test(r)).forEach((r, n) => {
+        const tr = el("tr");
+        cells(r).forEach((c) => { const td = el(n === 0 ? "th" : "td"); inline(td, c); tr.append(td); });
+        body.append(tr);
+      });
+      table.append(body);
+      const wrap = el("div", "scroll");
+      wrap.append(table);
+      out.append(wrap);
+      list = null;
+      continue;
+    }
+    const m = /^(#{1,4})\s+(.*)$/.exec(line);
+    if (m) { const h = el("h" + Math.min(6, m[1].length + 2)); inline(h, m[2]); out.append(h); list = null; continue; }
+    const b = /^\s*[-*]\s+(.*)$/.exec(line);
+    if (b) {
+      if (!list) { list = el("ul"); out.append(list); }
+      const li = el("li"); inline(li, b[1]); list.append(li); continue;
+    }
+    list = null;
+    if (line.trim()) { const p = el("p"); inline(p, line); out.append(p); }
+  }
+  return out;
+}
+
+function renderTexts(texts, open) {
   const frag = document.createDocumentFragment();
   for (const t of texts) {
-    const d = el("details", "text");
+    const d = el("details", "card text");
+    if (open) d.open = true;
     d.append(el("summary", null, t.title));
-    d.append(el("pre", null, t.text));
+    d.append(markdown(t.text));
     frag.append(d);
   }
   return frag;
@@ -95,12 +205,14 @@ function renderTiles() {
   const nav = document.getElementById("tiles");
   nav.replaceChildren();
   for (const p of state.data.panels) {
-    const b = el("button", "tile" + (p.bot === state.bot ? " on" : "") + (p.alert ? " alert" : ""));
+    const meta = BOTS[p.bot] || { icon: "•", blurb: "" };
+    const b = el("button", "tile t-" + p.bot + (p.bot === state.bot ? " on" : "") + (p.alert ? " alert" : ""));
     b.type = "button";
-    b.append(el("span", "name", p.title));
-    b.append(el("span", "badge " + badgeClass(p.badge), p.badge));
-    b.append(el("span", "head", p.headline || " "));
-    b.append(el("span", "age", p.age ? "updated " + p.age : (p.reason || "")));
+    const top = el("div", "ttop");
+    top.append(el("span", "ticon", meta.icon), el("span", "tname", p.title), badge(p.badge));
+    b.append(top);
+    b.append(el("div", "thead", p.headline || "–"));
+    b.append(el("div", "tblurb", p.age ? "Updated " + p.age : (p.reason || meta.blurb)));
     b.addEventListener("click", () => { state.bot = p.bot; location.hash = p.bot; render(); });
     nav.append(b);
   }
@@ -113,15 +225,22 @@ function renderPanel() {
   main.replaceChildren();
   const p = state.data.panels.find((x) => x.bot === state.bot) || state.data.panels[0];
   if (!p) return;
-  const h = el("div", "phead");
-  h.append(el("h2", null, p.title));
-  h.append(el("span", "badge " + badgeClass(p.badge), p.badge));
-  if (p.updated) h.append(el("span", "upd", "last update " + p.updated + " (" + p.age + ")"));
+  main.className = "p-" + p.bot;
+  const meta = BOTS[p.bot] || { icon: "", blurb: "" };
+  const h = el("div", "hero");
+  const left = el("div");
+  const title = el("h2");
+  title.append(el("span", "hicon", meta.icon), document.createTextNode(p.title));
+  left.append(title, el("div", "hsub", meta.blurb));
+  const right = el("div", "hright");
+  right.append(badge(p.badge));
+  if (p.updated) right.append(el("div", "upd", "Updated " + p.updated));
+  h.append(left, right);
   main.append(h);
-  if (p.reason) main.append(el("p", "reason " + badgeClass(p.badge), p.reason));
-  main.append(renderFacts(p.facts));
-  p.tables.forEach((t, i) => main.append(renderTable(t, p.bot, p.bot + ":" + i + ":" + t.title.split(" (")[0])));
-  main.append(renderTexts(p.texts));
+  if (p.reason) main.append(el("p", "reason " + (BADGES[p.badge] || ["", "grey"])[1], p.reason));
+  if (p.facts.length) main.append(renderFacts(p.facts));
+  p.tables.forEach((t, i) => main.append(renderTable(t, p.bot, p.bot + ":" + i + ":" + t.title.split(" · ")[0])));
+  main.append(renderTexts(p.texts, false));
   for (const s of main.querySelectorAll("details > summary")) if (open.has(s.textContent)) s.parentElement.open = true;
   window.scrollTo(0, scroll);
 }
@@ -133,20 +252,25 @@ function render() {
   renderPanel();
 }
 
+function setConn(ok, text) {
+  const c = document.getElementById("conn");
+  c.className = "conn " + (ok ? "ok" : "bad");
+  document.getElementById("conntext").textContent = text;
+}
+
 async function refresh() {
-  const conn = document.getElementById("conn");
   try {
     const r = await fetch("/api/overview", { cache: "no-store" });
     if (!r.ok) throw new Error("HTTP " + r.status);
     state.data = await r.json();
-    conn.textContent = "connected"; conn.className = "";
+    setConn(true, "Live");
   } catch (e) {
-    conn.textContent = "dashboard program not answering: " + e.message; conn.className = "bad";
+    setConn(false, "The dashboard program isn't answering (" + e.message + ")");
   }
   try {
     render();
   } catch (e) {
-    conn.textContent = "page error: " + e.message + " (tell Claude)"; conn.className = "bad";
+    setConn(false, "Page error: " + e.message + " (tell Claude)");
   }
   clearTimeout(state.timer);
   state.timer = setTimeout(refresh, 1000 * ((state.data && state.data.refresh_s) || 5));
@@ -155,23 +279,25 @@ async function refresh() {
 async function openDetail(bot, key) {
   const dlg = document.getElementById("detail");
   const body = document.getElementById("dbody");
-  document.getElementById("dtitle").textContent = "Loading...";
+  dlg.className = "p-" + bot;
+  document.getElementById("dtitle").textContent = "Loading…";
   body.replaceChildren();
   if (!dlg.open) dlg.showModal();
   try {
     const r = await fetch("/api/detail?bot=" + encodeURIComponent(bot) + "&key=" + encodeURIComponent(key), { cache: "no-store" });
     const d = await r.json();
     document.getElementById("dtitle").textContent = d.title;
-    body.append(renderFacts(d.facts));
+    if (d.facts.length) body.append(renderFacts(d.facts));
     d.tables.forEach((t, i) => body.append(renderTable(t, null, "d:" + i)));
-    const texts = renderTexts(d.texts);
-    for (const det of texts.querySelectorAll("details")) det.open = true;
-    body.append(texts);
+    body.append(renderTexts(d.texts, true));
   } catch (e) {
-    document.getElementById("dtitle").textContent = "Could not load details: " + e.message;
+    document.getElementById("dtitle").textContent = "Couldn't load the details: " + e.message;
   }
 }
 
 document.getElementById("dclose").addEventListener("click", () => document.getElementById("detail").close());
+document.getElementById("detail").addEventListener("click", (ev) => {
+  if (ev.target.id === "detail") ev.target.close();  // a click on the backdrop closes it
+});
 window.addEventListener("hashchange", () => { state.bot = (location.hash || "#guardian").slice(1); render(); });
 refresh();

@@ -190,9 +190,25 @@ def test_server_routes(server):
     status, body, _ = get(port, "/api/overview")
     assert status == 200 and b'"guardian"' in body
     status, body, _ = get(port, "/api/detail?bot=pilot&key=PB1")
-    assert status == 200 and b"PROTECTED" in body
+    assert status == 200 and b"Protected" in body
     assert get(port, "/../config.toml")[0] == 404
     assert get(port, "/api/overview", method="POST")[0] == 405
+
+
+def test_second_copy_cannot_share_the_port(bots):
+    import dataclasses
+    from dashboard.server import serve
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    cfg = dataclasses.replace(bots, port=port)
+    first = serve(cfg)
+    try:
+        with pytest.raises(OSError):
+            serve(cfg).server_close()
+    finally:
+        first.server_close()
 
 
 def test_server_refuses_other_hosts(server):

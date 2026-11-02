@@ -20,35 +20,38 @@ def facts(p: dict) -> dict:
 def test_guardian_live_with_position_stops_and_ratchet(bots):
     p = guardian.build(bots, NOW)
     assert p["badge"] == "LIVE" and not p["alert"]
-    assert p["headline"] == "managed 1, unprotected 0"
-    pos = table(p, "Positions with a plan")
+    assert p["headline"] == "1 managed · 0 unprotected"
+    pos = table(p, "Positions Guardian is managing")
     assert len(pos["rows"]) == 1  # ZZZ has no plan
     row = dict(zip(pos["columns"], pos["rows"][0]))
     assert row["Symbol"] == "ABCD" and row["Stop now"] == "1.90"
-    assert "breakeven at 2.10: stop to 2.00" in row["Next ratchet (estimate)"]
-    assert "R-step at 2.20: stop to 2.10" in row["Next ratchet (estimate)"]
+    assert "Breakeven at 2.10 → stop 2.00" in row["Next ratchet (estimate)"]
+    assert "R-step at 2.20 → stop 2.10" in row["Next ratchet (estimate)"]
+    assert row["Class"] == "Managed"
     assert pos["keys"] == ["2026-11-03|ABCD"]
-    assert table(p, "Guardian's working orders")["rows"][0][5] == "WORKING"
-    closed = table(p, "Trades journalled")
+    assert table(p, "Guardian's working orders")["rows"][0][5] == "Working"
+    warn = table(p, "Latest warnings and errors")["rows"][0]
+    assert warn[1:3] == ["Warning", "Quote stale"] and warn[4] == "Quote <b>old</b>"
+    closed = table(p, "Today's trades")
     assert dict(zip(closed["columns"], closed["rows"][0]))["P&L $"] == "8.00"
 
 
 def test_guardian_detail(bots):
     d = guardian.detail(bots, "2026-11-03|ABCD")
     f = {x[0]: x[1] for x in d["facts"]}
-    assert f["Stop"] == "1.90" and "breakeven" in f["Next ratchet (estimate)"]
+    assert f["Stop"] == "1.90" and "Breakeven" in f["Next ratchet (estimate)"]
     titles = [t["title"] for t in d["tables"]]
-    assert titles == ["Stop history", "Exits", "Guardian orders", "Events (newest first)"]
+    assert titles == ["Stop history", "Exits", "Guardian's orders", "Events, newest first"]
     assert d["tables"][1]["rows"][0][2] == "2.20"
 
 
 def test_next_ratchet_after_breakeven():
     s = {"breakeven_at_r": 1.0, "trail_atr_mult": 2.0, "trail_pct": 0.06}
     text = guardian.next_ratchet(guardian_plan(hwm="2.35", stop="2.10", breakeven_armed=True), s)
-    assert "breakeven" not in text
-    assert "R-step at 2.40: stop to 2.30" in text
-    assert "trail 2.27 (above the stop" in text
-    assert guardian.next_ratchet(guardian_plan(), None).startswith("unknown")
+    assert "Breakeven" not in text
+    assert "R-step at 2.40 → stop 2.30" in text
+    assert "Trail 2.27 (above the stop" in text
+    assert guardian.next_ratchet(guardian_plan(), None).startswith("Unknown")
 
 
 def test_guardian_unprotected_alerts(tmp_path):
@@ -70,29 +73,33 @@ def test_guardian_stale_starting_stopped(tmp_path):
 
 def test_radar(bots):
     p = radar.build(bots, NOW)
-    assert p["badge"] == "LIVE" and p["headline"] == "1 finds on 2026-11-03"
-    finds = table(p, "Finds")
+    assert p["badge"] == "LIVE" and p["headline"] == "1 find · Tue 3 Nov"
+    finds = table(p, "Radar's finds")
     row = dict(zip(finds["columns"], finds["rows"][0]))
-    assert row["Change"] == "28.3%" and row["Tags"] == "gap_and_hold"
+    assert row["Change"] == "28.3%" and row["Tags"] == "Gap and hold" and row["Session"] == "Pre-market"
     hand = table(p, "Handed to Pilot")
     assert len(hand["rows"]) == 1  # the torn last line waits
-    assert facts(p)["Radar status"] == "running"
+    assert facts(p)["Radar status"] == "Running"
     d = radar.detail(bots, finds["keys"][0])
-    assert d["title"].startswith("Radar: ABCD")
+    assert d["title"].startswith("Radar · ABCD")
     assert d["tables"][-1]["rows"][0][2] == "2.30"
+    assert ["VWAP", "2.1"] in table(d, "Facts")["rows"]
 
 
 def test_scout(bots):
     p = scout.build(bots, NOW)
-    assert p["badge"] == "LIVE" and p["headline"] == "sources OK 1 of 2"
+    assert p["badge"] == "LIVE" and p["headline"] == "1 of 2 sources OK"
     news = table(p, "News and context")
     assert len(news["rows"]) == 1 and "1 unreadable line(s) skipped" in news["note"]
     assert news["rows"][0][5].startswith("<script>")  # kept as text; the page renders it as text
-    assert table(p, "Jason's levels")["rows"][0][4] == "entry: 2.40"
-    assert table(p, "Answers")["rows"][0][1] == "ABCD"
+    assert table(p, "Jason's levels")["rows"][0][4] == "Entry: 2.40"
+    ans = table(p, "Answers")["rows"][0]
+    assert ans[1] == "ABCD" and ans[3] == "Yes" and ans[4] == "No"
+    src = table(p, "Sources")["rows"]
+    assert src[0][:3] == ["BLS", "Yes", "Stale"] and src[1][0] == "PR Newswire"
     assert any("All quiet" in t["text"] for t in p["texts"])
     d = scout.detail(bots, news["keys"][0])
-    assert ["kind", "wire", ""] in d["facts"]
+    assert ["Kind", "Wire", ""] in d["facts"] and ["Link", "https://example.com/a", ""] in d["facts"]
 
 
 def test_scout_stopped_and_stale(tmp_path):
@@ -107,12 +114,12 @@ def test_scout_stopped_and_stale(tmp_path):
 
 def test_pilot_protected(bots):
     p = pilot.build(bots, NOW)
-    assert p["badge"] == "LIVE" and p["headline"] == "1 open paper trade(s)" and not p["alert"]
+    assert p["badge"] == "LIVE" and p["headline"] == "1 open paper trade" and not p["alert"]
     trades = table(p, "Paper trades")
     rows = [dict(zip(trades["columns"], r)) for r in trades["rows"]]
-    assert rows[0]["State"] == "open" and rows[0]["Protection"] == "PROTECTED"
-    assert rows[1]["State"] == "closed" and rows[1]["P&L $"] == "15.00" and rows[1]["R"] == "1.88"
-    assert table(p, "Decisions")["rows"][1][4] == "spread_too_wide"
+    assert rows[0]["State"] == "Open" and rows[0]["Protection"] == "Protected"
+    assert rows[1]["State"] == "Closed" and rows[1]["P&L $"] == "15.00" and rows[1]["R"] == "1.88"
+    assert table(p, "Decisions")["rows"][1][3:] == ["No", "Spread too wide"]
 
 
 def test_pilot_at_risk_reasons(tmp_path):
@@ -120,8 +127,8 @@ def test_pilot_at_risk_reasons(tmp_path):
     pd = make_pilot(tmp_path, report_age_s=600, tags=("no_quote_60s",), plan=False)
     p = pilot.build(Config(guardian_dir=g, pilot_dir=pd), NOW)
     prot = dict(zip(table(p, "Paper trades")["columns"], table(p, "Paper trades")["rows"][0]))["Protection"]
-    assert prot.startswith("AT RISK")
-    for part in ("plan file missing", "Pilot not live", "Guardian heartbeat stale", "no usable quote"):
+    assert prot.startswith("At risk")
+    for part in ("Plan file missing", "Pilot not live", "Guardian's heartbeat is stale", "No usable quote"):
         assert part in prot
     assert p["alert"]
 
@@ -129,14 +136,15 @@ def test_pilot_at_risk_reasons(tmp_path):
 def test_pilot_detail(bots):
     d = pilot.detail(bots, "PB1")
     f = {x[0]: x[1] for x in d["facts"]}
-    assert f["Protection"] == "PROTECTED" and f["Stop"] == "1.92"
-    assert any(t["title"] == "Plan file" and '"stop": "1.92"' in t["text"] for t in d["texts"])
-    assert pilot.detail(bots, "PB0")["texts"][-1]["title"] == "Measures"
+    assert f["Protection"] == "Protected" and f["Stop"] == "1.92" and f["Order ID"] == "PB1"
+    plan = table(d, "Plan file")["rows"]
+    assert ["Stop", "1.92"] in plan and ["Targets", "2.30 for 50.0% of the shares"] in plan
+    assert ["Rel volume", "3.1"] in table(pilot.detail(bots, "PB0"), "Measures at entry")["rows"]
 
 
 def test_pilot_not_installed(empty):
     p = pilot.build(empty, NOW)
-    assert p["badge"] == "NO DATA" and "not installed" in p["reason"]
+    assert p["badge"] == "NO DATA" and "isn't installed yet" in p["reason"]
 
 
 def test_everything_missing_never_crashes(empty):
@@ -169,9 +177,25 @@ def test_bad_detail_keys(bots):
     assert app.detail("nobot", "x")["title"] == "Not found"
     assert app.detail("pilot", "..\\..\\x")["title"] == "Error"
     assert app.detail("scout", "../x|y")["title"] == "Error"
-    assert app.detail("radar", "999")["facts"][0][1] == "not found"
+    assert app.detail("radar", "999")["facts"][0][1] == "Not found"
 
 
 def test_future_heartbeat_is_stale(tmp_path):
     hb = {"format": 1, "at": (NOW + timedelta(minutes=5)).isoformat(), "managed": 0, "unprotected": 0}
     assert guardian.build(Config(guardian_dir=make_guardian(tmp_path, hb=hb)), NOW)["badge"] == "STALE"
+
+
+def test_plain_english_wording():
+    from dashboard import times
+    from dashboard.view import nice, sentence
+    assert nice("trade_events_status") == "Trade events status"
+    assert nice("WARNING") == "Warning" and nice("PRE") == "Pre-market" and nice("CORE") == "Regular hours"
+    assert nice("open_orders_unreadable_no_writes") == "Open orders unreadable no writes"
+    assert nice("cboe_vix") == "Cboe VIX" and nice("edgar_atom") == "EDGAR atom" and nice("hwm") == "High"
+    assert nice("true") == "Yes" and nice("unknown") == "Unknown"
+    assert nice("10-K: TimeoutError") == "10-K: TimeoutError" and nice("123") == "123"
+    assert sentence("positions unreadable") == "Positions unreadable"
+    assert sentence("open_orders unreadable (SDK.HttpError)") == "Open orders unreadable (SDK.HttpError)"
+    assert times.show_date("2026-11-02") == "Mon 2 Nov"
+    from datetime import datetime, timezone
+    assert times.show_short(datetime(2026, 10, 31, 12, 38, 24, tzinfo=timezone.utc)) == "31 Oct, 8:38 am"

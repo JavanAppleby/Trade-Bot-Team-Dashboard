@@ -9,6 +9,7 @@ Panel: {bot, title, badge, reason, updated, age, headline, alert, facts, tables,
 
 from __future__ import annotations
 
+import re
 import traceback
 from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
@@ -41,12 +42,73 @@ def cell(value: object) -> str:
     if value is None:
         return ""
     if isinstance(value, bool):
-        return "yes" if value else "no"
+        return "Yes" if value else "No"
     if isinstance(value, (list, tuple)):
         return ", ".join(cell(v) for v in value)
     if isinstance(value, dict):
-        return ", ".join(f"{k}: {cell(v)}" for k, v in value.items())
+        return ", ".join(f"{nice(k)}: {cell(v)}" for k, v in value.items())
     return str(value)
+
+
+# Plain-English wording for the bots' codes ("read_failed" -> "Read failed", PRE -> "Pre-market").
+WORDS = {"pct": "%", "usd": "$", "r": "R", "atr": "ATR", "hwm": "high", "coid": "order ID", "id": "ID",
+         "llm": "LLM", "vix": "VIX", "cik": "CIK", "url": "link", "sha256": "SHA-256", "et": "ET", "pnl": "P&L",
+         "edgar": "EDGAR", "bls": "BLS", "fomc": "FOMC", "cboe": "Cboe", "rss": "RSS", "prnewswire": "PR Newswire",
+         "globenewswire": "GlobeNewswire", "nasdaq": "Nasdaq", "jason": "Jason", "discord": "Discord",
+         "tg": "Guardian", "sdk": "SDK", "http": "HTTP", "json": "JSON", "rvol": "rel volume", "vwap": "VWAP",
+         "mfe": "MFE", "mae": "MAE", "eod": "end of day", "cpi": "CPI", "ppi": "PPI", "nfp": "NFP", "gdp": "GDP",
+         "nowflation": "Nowflation", "pr": "PR", "ok": "OK", "pmh": "pre-market high", "rr": "reward:risk",
+         "10d": "10-day", "ttl": "TTL", "api": "API", "ath": "after hours", "rth": "regular hours"}
+SESSIONS = {"PRE": "Pre-market", "CORE": "Regular hours", "POST": "After hours", "NIGHT": "Overnight",
+            "CLOSED": "Closed"}
+ANSWERS = {"true": "Yes", "false": "No", "unknown": "Unknown"}
+_CODE = re.compile(r"[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*")
+
+
+def nice(value: object) -> object:
+    """A code as plain words: 'trade_events_status' -> 'Trade events status', 'WARNING' -> 'Warning',
+    'PRE' -> 'Pre-market'. Anything that is not a single code (a sentence, a number) is unchanged."""
+    if isinstance(value, (list, tuple)):
+        return [nice(v) for v in value]
+    if not isinstance(value, str) or not value:
+        return value
+    if value in SESSIONS:
+        return SESSIONS[value]
+    if value in ANSWERS:
+        return ANSWERS[value]
+    if not _CODE.fullmatch(value) or value.isdigit():
+        return value
+    words = [WORDS.get(w.lower(), w.lower()) for w in value.split("_")]
+    text = " ".join(words).replace(" %", " %").replace("$ ", "$")
+    return text[0].upper() + text[1:]
+
+
+def kv_table(title: str, data: object, note: str = "") -> dict:
+    """A JSON object as a two-column table: plain-English keys, codes in values as words."""
+    if not isinstance(data, dict):
+        return table(title, [], [], note=note or ("Nothing recorded." if data in (None, "", {}) else cell(data)))
+    rows = []
+    for k, val in data.items():
+        if isinstance(val, str) and "_" in val:
+            val = nice(val)
+        elif isinstance(val, list):
+            val = [nice(x) if isinstance(x, str) and "_" in x else x for x in val]
+        elif isinstance(val, float):
+            val = f"{val:.4g}"
+        rows.append([nice(k), val])
+    return table(title, ["", ""], rows, note=note)
+
+
+def sentence(value: object) -> object:
+    """A message with a capital first letter and any lower-case code in it as words
+    ('open_orders unreadable' -> 'Open orders unreadable')."""
+    if not isinstance(value, str) or not value:
+        return value
+    value = _SNAKE.sub(lambda m: m.group(0).replace("_", " "), value)
+    return value[0].upper() + value[1:] if value[0].islower() else value
+
+
+_SNAKE = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
 
 
 def dec(value: object) -> Decimal | None:
