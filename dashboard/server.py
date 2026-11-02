@@ -27,8 +27,9 @@ from dashboard.config import Config, ConfigError, load_config
 
 log = logging.getLogger("dashboard")
 
-BOTS = {"guardian": guardian, "radar": radar, "scout": scout, "pilot": pilot}
-TITLES = {"guardian": "Guardian", "radar": "Radar", "scout": "Scout", "pilot": "Pilot (paper)"}
+# In the order work flows: Scout gathers context, Radar finds, Pilot buys (paper), Guardian protects and sells.
+BOTS = {"scout": scout, "radar": radar, "pilot": pilot, "guardian": guardian}
+TITLES = {"scout": "Scout", "radar": "Radar", "pilot": "Pilot (paper)", "guardian": "Guardian"}
 STATIC = {"/": ("index.html", "text/html; charset=utf-8"),
           "/app.js": ("app.js", "text/javascript; charset=utf-8"),
           "/style.css": ("style.css", "text/css; charset=utf-8")}

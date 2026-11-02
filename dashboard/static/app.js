@@ -24,7 +24,7 @@ const GREEN = ["ok", "working", "protected", "open", "live", "running", "filled"
 const BLUE = ["pre-market", "regular hours", "after hours", "overnight", "wire", "filing", "stop", "r step",
   "atr trail", "pct trail", "initial", "flatten"];
 
-const state = { data: null, bot: (location.hash || "#guardian").slice(1), filters: {}, timer: null };
+const state = { data: null, bot: (location.hash || "#scout").slice(1), filters: {}, timer: null };
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -299,5 +299,5 @@ document.getElementById("dclose").addEventListener("click", () => document.getEl
 document.getElementById("detail").addEventListener("click", (ev) => {
   if (ev.target.id === "detail") ev.target.close();  // a click on the backdrop closes it
 });
-window.addEventListener("hashchange", () => { state.bot = (location.hash || "#guardian").slice(1); render(); });
+window.addEventListener("hashchange", () => { state.bot = (location.hash || "#scout").slice(1); render(); });
 refresh();

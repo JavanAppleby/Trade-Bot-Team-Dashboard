@@ -149,6 +149,7 @@ def test_pilot_not_installed(empty):
 
 def test_everything_missing_never_crashes(empty):
     body = Dashboard(empty).overview()
+    assert [p["bot"] for p in body["panels"]] == ["scout", "radar", "pilot", "guardian"]
     assert [p["badge"] for p in body["panels"]] == ["NO DATA"] * 4
 
 
