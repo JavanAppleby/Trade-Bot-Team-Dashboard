@@ -32,18 +32,19 @@ The panels, the files they read and the stale limits are listed in `docs/DESIGN.
 Do this once, on a weekend or before 04:00 ET (19:00 Brisbane from November to March, 18:00 the rest of the year). The dashboard doesn't touch the
 bots, but doing it outside US hours means nothing distracts you while a bot is trading.
 
-1. Open a Command Prompt and run:
+1. Open PowerShell and run these lines one at a time:
 
    ```
-   cd /d E:\
+   cd E:\
    git clone https://github.com/JavanAppleby/Trade-Bot-Team-Dashboard.git Dashboard
-   cd /d E:\Dashboard
+   cd E:\Dashboard
    py -3.13 -m venv .venv
    .venv\Scripts\python.exe -m pip install -e ".[dev]"
    .venv\Scripts\python.exe -m pytest -q
    ```
 
-   The last line should end with `passed` and no `failed`.
+   The last line should end with `passed` and no `failed`. (Run each line on its own: Windows
+   PowerShell 5.1 does not accept `&&` between commands.)
 
 2. Optional: to change a folder, the port or a stale limit, copy `config.example.toml` to
    `config.toml` and edit it. Without a `config.toml` the defaults are used: `E:\Trade_Guardian`,
