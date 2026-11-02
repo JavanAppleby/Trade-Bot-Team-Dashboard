@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trade Dashboard</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header>
+  <h1>Trade Dashboard</h1>
+  <span class="sub">read only &middot; <span id="now">loading...</span> &middot; <span id="conn"></span></span>
+</header>
+<nav id="tiles" aria-label="Bots"></nav>
+<main id="panel"></main>
+<dialog id="detail">
+  <div class="dhead"><h2 id="dtitle"></h2><button id="dclose" type="button">Close</button></div>
+  <div id="dbody"></div>
+</dialog>
+</body>
+</html>

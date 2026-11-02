@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trade-dashboard"
+version = "0.1.0"
+description = "Read-only local dashboard for Guardian, Radar, Scout and Pilot"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "tzdata",  # Windows has no IANA zones; zoneinfo needs this for America/New_York
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["dashboard*"]
+
+[tool.setuptools.package-data]
+dashboard = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

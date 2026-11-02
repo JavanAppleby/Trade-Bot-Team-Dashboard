@@ -1,0 +1,15 @@
+# the dashboard's own runtime files: never committed
+.env
+.env.*
+config.toml
+logs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/

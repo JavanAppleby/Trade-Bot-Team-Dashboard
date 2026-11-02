@@ -1,0 +1,23 @@
+# Trade Dashboard settings. Copy this file to config.toml and change what you need.
+# Every key is optional; the value shown is the default. Unknown keys are refused.
+
+# The bots' folders (read only: the dashboard never writes in them).
+guardian_dir = 'E:\Trade_Guardian'
+radar_dir = 'E:\Radar'
+scout_dir = 'E:\Scout'
+pilot_dir = 'E:\Pilot'
+
+# The page is served at http://127.0.0.1:<port>/ and only on this PC.
+port = 8765
+
+# How often the page asks for fresh data (seconds).
+refresh_s = 5
+
+# A bot's panel shows STALE when its newest data is older than this (seconds).
+guardian_stale_s = 30    # Guardian's heartbeat (Guardian beats every pass)
+radar_stale_s = 180      # reports\screener-live.md (Radar rewrites it every 60 s)
+scout_stale_s = 120      # state\scout.heartbeat (Scout beats every 30 s)
+pilot_stale_s = 180      # reports\pilot-live.md (Pilot rewrites it every 60 s)
+
+# Open the page in the default browser when the dashboard starts.
+open_browser = true
