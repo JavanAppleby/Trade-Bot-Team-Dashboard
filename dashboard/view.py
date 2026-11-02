@@ -3,7 +3,7 @@
 Panel: {bot, title, badge, reason, updated, age, headline, alert, facts, tables, texts}
 - badge: LIVE | STALE | STOPPED | STARTING | NO DATA | ERROR
 - facts: [[label, value, level]] where level is "" | "good" | "warn" | "bad"
-- tables: [{title, columns, rows, keys, note}]; keys[i] is the detail key of rows[i] or None
+- tables: [{title, columns, rows, keys, note, sort}]; keys[i] is the detail key of rows[i] or None
 - texts: [{title, text}] shown as plain preformatted text
 """
 
@@ -29,9 +29,12 @@ def fact(p: dict, label: str, value: object, level: str = "") -> None:
     p["facts"].append([label, cell(value), level])
 
 
-def table(title: str, columns: list[str], rows: list[list], keys: list | None = None, note: str = "") -> dict:
+def table(title: str, columns: list[str], rows: list[list], keys: list | None = None, note: str = "",
+          sort: tuple[str, bool] | None = None) -> dict:
+    """`sort` = (column, descending): how the page first orders the rows; any header click re-sorts."""
     return {"title": title, "columns": columns, "rows": [[cell(v) for v in r] for r in rows],
-            "keys": keys if keys is not None else [None] * len(rows), "note": note}
+            "keys": keys if keys is not None else [None] * len(rows), "note": note,
+            "sort": {"col": sort[0], "desc": sort[1]} if sort else None}
 
 
 def text(p: dict, title: str, body: str) -> None:

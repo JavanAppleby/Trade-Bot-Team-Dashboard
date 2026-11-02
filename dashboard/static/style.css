@@ -118,6 +118,8 @@ th, td { text-align: left; padding: 7px 10px; vertical-align: top; }
 th { position: sticky; top: 0; z-index: 1; background: var(--card-solid); color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
 tbody tr:nth-child(even) { background: rgba(127, 127, 160, .05); }
 tbody tr + tr td { border-top: 1px solid var(--line); }
+th.sortable { cursor: pointer; user-select: none; } th.sortable:hover { color: var(--fg); }
+.arrow { color: var(--c1, var(--blue)); }
 tr.click { cursor: pointer; } tr.click:hover, tr.click:focus { background: var(--hover); outline: none; }
 tr.risk { background: var(--risk) !important; }
 table.kv td:first-child { color: var(--muted); width: 40%; }

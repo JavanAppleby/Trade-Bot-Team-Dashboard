@@ -13,18 +13,18 @@ const BADGES = { "LIVE": ["Live", "live"], "STALE": ["Stale", "stale"], "ERROR":
 // Columns whose values show as coloured pills, and how each value is coloured.
 const PILL_COLS = new Set(["Level", "Status", "Protection", "State", "Taken", "Enabled", "Gap open", "Stale",
   "Halt open", "Breakeven armed", "Shadow", "Class", "Session", "Type", "Fresh catalyst",
-  "Event before next session", "Macro next session", "Kind", "Why"]);
+  "Event before next session", "Macro next session", "Kind", "Why", "Radar"]);
 const BAD_WHEN_YES = new Set(["Gap open", "Stale", "Halt open", "Shadow"]);
 const TIME_COL = /^(time|found|opened|created|first|first seen|first buy|last ok|last seen|updated|closed|written|expires|flatten at)/i;
 const SIGNED_COLS = new Set(["P&L $", "R", "Change"]);
 const RED = ["error", "critical", "at risk", "stopped", "rejected", "stale", "http error", "timeout", "unprotected"];
 const AMBER = ["warning", "starting", "intent", "pending", "partial", "unknown", "backoff"];
-const GREEN = ["ok", "working", "protected", "open", "live", "running", "filled", "yes", "managed", "breakeven",
+const GREEN = ["radar find", "ok", "working", "protected", "open", "live", "running", "filled", "yes", "managed", "breakeven",
   "target"];
 const BLUE = ["pre-market", "regular hours", "after hours", "overnight", "wire", "filing", "stop", "r step",
   "atr trail", "pct trail", "initial", "flatten"];
 
-const state = { data: null, bot: (location.hash || "#scout").slice(1), filters: {}, timer: null };
+const state = { data: null, bot: (location.hash || "#scout").slice(1), filters: {}, sorts: {}, timer: null };
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -104,15 +104,28 @@ function renderTable(t, bot, filterId) {
   const table = el("table");
   const plain = t.columns.every((c) => c === "");
   if (plain) table.className = "kv";
-  else {
+  const sort = plain ? null : (state.sorts[filterId] || t.sort);
+  if (!plain) {
     const thead = el("thead");
     const tr = el("tr");
-    for (const c of t.columns) tr.append(el("th", null, c));
+    for (const c of t.columns) {
+      const th = el("th", "sortable", c);
+      th.title = "Click to sort";
+      if (sort && sort.col === c) th.append(el("span", "arrow", sort.desc ? " ▼" : " ▲"));
+      th.addEventListener("click", () => {
+        const now = state.sorts[filterId] || t.sort;
+        // First click: numbers and times high/newest first; a second click on the same column reverses.
+        state.sorts[filterId] = { col: c, desc: now && now.col === c ? !now.desc : c !== "Rank" };
+        render();
+      });
+      tr.append(th);
+    }
     thead.append(tr);
     table.append(thead);
   }
   const body = el("tbody");
-  t.rows.forEach((row, i) => {
+  for (const i of sortedOrder(t, sort)) {
+    const row = t.rows[i];
     const r = el("tr");
     row.forEach((c, j) => {
       const td = el("td", TIME_COL.test(t.columns[j]) ? "nowrap" : null);
@@ -127,7 +140,7 @@ function renderTable(t, bot, filterId) {
     }
     if (row.some((c) => c.startsWith("At risk"))) r.classList.add("risk");
     body.append(r);
-  });
+  }
   table.append(body);
   wrap.append(table);
   box.append(wrap);
@@ -141,6 +154,30 @@ function renderTable(t, bot, filterId) {
     apply();
   }
   return box;
+}
+
+function asNumber(text) {
+  const s = text.replace(/[,$%+\s]/g, "");
+  return /^-?\d+(\.\d+)?$/.test(s) ? parseFloat(s) : null;
+}
+
+// The row order for a sort: numbers by value, times by when they happened (the server sends rows
+// newest first), other text alphabetically; empty cells always last.
+function sortedOrder(t, sort) {
+  const idx = t.rows.map((_, i) => i);
+  const j = sort ? t.columns.indexOf(sort.col) : -1;
+  if (j < 0) return idx;
+  const isTime = TIME_COL.test(sort.col);
+  const nums = t.rows.map((r) => asNumber(r[j]));
+  const numeric = !isTime && t.rows.every((r, i) => r[j] === "" || nums[i] !== null);
+  const dir = sort.desc ? -1 : 1;
+  return idx.sort((a, b) => {
+    const ea = t.rows[a][j] === "", eb = t.rows[b][j] === "";
+    if (ea || eb) return ea === eb ? a - b : ea ? 1 : -1;
+    if (isTime) return sort.desc ? a - b : b - a;
+    const c = numeric ? nums[a] - nums[b] : t.rows[a][j].localeCompare(t.rows[b][j], undefined, { numeric: true });
+    return c ? c * dir : a - b;
+  });
 }
 
 // A small, safe Markdown view for the bots' own reports: headings, bullets, tables and **bold**.

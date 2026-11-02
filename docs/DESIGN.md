@@ -90,6 +90,8 @@ when idle). **Stale after 3 min.** Running: `state\radar.lock` exists.
 | Status line: session, status (idle/running), budget, pause, stream state, deferred jobs | `reports\screener-live.md`, the "Updated" and "Status" sections, shown as written |
 | **Today's finds**, newest first: symbol, found time, session, price, % change, rel volume, spread, tags, flags, feeds, last seen | `state\radar.db`, `screener_candidates` for today's `trading_day` |
 | Click a find: all its facts and filter results, its price observations, its outcome when computed (best/worst move, sim result in % and R) | `screener_candidates.facts_json`/`filter_json`, `screener_observations`, `screener_outcomes` by `candidate_id` |
+| **Webull leaderboards** (owner request 2026-11-02): the newest list Radar read from each ranking feed (pre-market / day / after-hours gainers, fast movers, volume surges), in Webull's order, top 50: rank, symbol, price, % change, volume, rel volume, and "Radar find" when the symbol is one of today's finds (click opens it). Each list shows when it was read and turns stale after the Radar limit; prices are as read, not live | `raw_rankings`: per feed, the row with the highest `id` on the newest `trading_day`; `body_json` read as Radar's `parse_ranking_rows` does (bare list or `data`/`list`/`items`/`result`/`rows` wrapper; a repeated symbol keeps its first rank; a 0 price is blank) |
+| Every table sorts by clicking a column heading (numbers by value, times by when, blanks last); the finds start sorted by % change, highest first | page only |
 | What was handed to Pilot today | `state\handoff\<trading_day>.jsonl` (one line per find; "none yet" while the file is absent) |
 | Last 20 events | `events`, newest first |
 

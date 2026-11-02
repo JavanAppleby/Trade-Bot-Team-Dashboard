@@ -1,4 +1,5 @@
-"""Radar panel: status from its live report, today's finds, the hand-off to Pilot, events."""
+"""Radar panel: status from its live report, today's finds, Webull's leaderboards as Radar last read
+them, the hand-off to Pilot, events."""
 
 from __future__ import annotations
 
@@ -8,6 +9,13 @@ from datetime import datetime, timezone
 from dashboard import safe, times
 from dashboard import view as v
 from dashboard.config import Config
+
+
+# Radar's ranking feeds (radar.models.Feed), in the order the page shows them.
+FEEDS = {"PRE_MARKET": "Pre-market gainers", "DAY_1": "Day gainers", "AFTER_MARKET": "After-hours gainers",
+         "MIN_5": "Fast movers (5 min)", "MIN_3": "Fast movers (3 min)", "RVOL_10D": "Volume surges (vs 10-day)"}
+WRAPPERS = ("data", "list", "items", "result", "rows")  # radar.webull.parse._WRAPPERS
+LEADERBOARD_ROWS = 50
 
 
 def _paths(cfg: Config) -> dict:
@@ -34,10 +42,11 @@ def build(cfg: Config, now: datetime) -> dict:
     else:
         v.freshness(p, datetime.fromtimestamp(written, timezone.utc), now, cfg.radar_stale_s, "Live report")
     v.fact(p, "Running", safe.exists(paths["lock"]))
-    found: list = []
+    found: dict = {}
     v.guarded(p, "Live report", lambda: _status(p, paths))
-    v.guarded(p, "Finds", lambda: found.extend(_finds(p, paths)))
-    day = found[0] if found else None
+    v.guarded(p, "Finds", lambda: found.update(_finds(p, paths)))
+    day = found.get("day")
+    v.guarded(p, "Leaderboards", lambda: _leaderboards(p, paths, found.get("ids", {}), now, cfg.radar_stale_s))
     v.guarded(p, "Handed to Pilot", lambda: _handoff(p, paths, day))
     v.guarded(p, "Events", lambda: _events(p, paths))
     p["alert"] = p["badge"] in (v.STALE, v.ERROR)
@@ -72,8 +81,69 @@ def _finds(p: dict, paths: dict) -> list:
         [[r["symbol"], times.show_short(r["found_at"]), v.nice(r["session"]), v.price(r["price"]), v.pct(r["change_pct"]),
           v.num(r["rel_volume_10d"], 1), v.pct(r["spread_pct"]), v.nice(_json(r["tags_json"])),
           v.nice(_json(r["flags_json"])), v.nice(r["feeds"]), times.show_short(r["last_seen_at"])] for r in rows],
-        [f"{r['id']}" for r in rows], note="" if rows else "Nothing found yet."))
-    return [day] if day else []
+        [f"{r['id']}" for r in rows], sort=("Change", True),
+        note="Stocks that passed all of Radar's filters. Click a column heading to sort by it."
+        if rows else "Nothing found yet."))
+    return {"day": day, "ids": {r["symbol"]: str(r["id"]) for r in rows}} if day else {}
+
+
+def _rows_of(body: object) -> list | None:
+    if isinstance(body, list):
+        return body
+    if isinstance(body, dict):
+        return next((body[k] for k in WRAPPERS if isinstance(body.get(k), list)), None)
+    return None
+
+
+def _positive(value: object) -> object:
+    """Webull sends "0.000000" for an absent price."""
+    d = v.dec(value)
+    return value if d is not None and d > 0 else None
+
+
+def _leaderboards(p: dict, paths: dict, finds: dict, now: datetime, stale_s: float) -> None:
+    """The newest list Radar read from each Webull ranking feed, in Webull's order."""
+    with safe.open_db(paths["db"]) as conn:
+        safe.require(conn, "raw_rankings", {"id", "trading_day", "received_at", "feed", "body_json"})
+        day = conn.execute("SELECT MAX(trading_day) FROM raw_rankings").fetchone()[0]
+        lists = conn.execute("SELECT feed, received_at, body_json FROM raw_rankings WHERE id IN "
+                             "(SELECT MAX(id) FROM raw_rankings WHERE trading_day = ? GROUP BY feed)",
+                             (day,)).fetchall()
+    if not lists:
+        p["tables"].append(v.table("Webull leaderboards", [], [], note=(
+            "No leaderboards read yet. Radar reads them in pre-market, regular hours and after hours.")))
+        return
+    order = list(FEEDS)
+    for r in sorted(lists, key=lambda x: order.index(x["feed"]) if x["feed"] in order else len(order)):
+        name = FEEDS.get(r["feed"], v.nice(r["feed"]))
+        read_at = times.parse(r["received_at"])
+        age = (now - read_at).total_seconds() if read_at else None
+        age_note = f"Read {times.age_text(age)} ({times.show_short(read_at, seconds=True)})." if read_at else ""
+        if age is None or age > stale_s:
+            age_note = f"Stale: {age_note[0].lower() + age_note[1:] if age_note else 'read time unknown.'} "                        "Radar reads this list only while the session is on."
+        try:
+            raw_rows = _rows_of(json.loads(r["body_json"]))
+        except (TypeError, json.JSONDecodeError):
+            raw_rows = None
+        if raw_rows is None:
+            p["tables"].append(v.table(f"Leaderboard · {name}", [], [], note=f"{age_note} The list could not be read."))
+            continue
+        rows, keys, seen = [], [], set()
+        for raw in raw_rows:
+            symbol = str(raw.get("symbol") or "").strip().upper() if isinstance(raw, dict) else ""
+            if not symbol or symbol in seen:
+                continue  # Radar's rule: a repeated symbol keeps its first (best) rank
+            seen.add(symbol)
+            rows.append([len(seen), symbol, v.price(_positive(raw.get("price"))), v.pct(raw.get("change_ratio")),
+                         v.cell(v.dec(raw.get("volume")) and f"{v.dec(raw.get('volume')):,.0f}"),
+                         v.num(raw.get("relative_volume_10d"), 1),
+                         "Radar find" if symbol in finds else ""])
+            keys.append(finds.get(symbol))
+            if len(rows) >= LEADERBOARD_ROWS:
+                break
+        p["tables"].append(v.table(
+            f"Leaderboard · {name}", ["Rank", "Symbol", "Price", "Change", "Volume", "Rel vol", "Radar"],
+            rows, keys, note=f"{age_note} Webull's order, top {LEADERBOARD_ROWS}; prices as read, not live.".strip()))
 
 
 def _handoff(p: dict, paths: dict, day: str | None) -> None:

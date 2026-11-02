@@ -200,3 +200,31 @@ def test_plain_english_wording():
     assert times.show_date("2026-11-02") == "Mon 2 Nov"
     from datetime import datetime, timezone
     assert times.show_short(datetime(2026, 10, 31, 12, 38, 24, tzinfo=timezone.utc)) == "31 Oct, 8:38 am"
+
+
+def test_radar_leaderboards_and_sort(bots):
+    p = radar.build(bots, NOW)
+    finds = table(p, "Radar's finds")
+    assert finds["sort"] == {"col": "Change", "desc": True}
+    titles = [t["title"] for t in p["tables"] if t["title"].startswith("Leaderboard")]
+    assert titles == ["Leaderboard · Pre-market gainers", "Leaderboard · Volume surges (vs 10-day)"]
+    pre = table(p, "Leaderboard · Pre-market gainers")
+    assert pre["columns"] == ["Rank", "Symbol", "Price", "Change", "Volume", "Rel vol", "Radar"]
+    assert pre["rows"][0] == ["1", "WXYZ", "5.10", "62.0%", "9,000,000", "14.2", ""]
+    assert pre["rows"][1][:2] == ["2", "ABCD"] and pre["rows"][1][6] == "Radar find"
+    assert pre["rows"][2][:3] == ["3", "ZERO", ""]  # the repeated WXYZ keeps rank 1; a 0 price is blank
+    assert pre["keys"] == [None, finds["keys"][0], None]
+    assert pre["note"].startswith("Read 30 s ago")
+    assert table(p, "Leaderboard · Volume surges")["note"].startswith("Stale: read 10 min ago")
+
+
+def test_radar_no_leaderboards_yet(tmp_path):
+    import sqlite3
+    from conftest import make_radar
+    r = make_radar(tmp_path)
+    conn = sqlite3.connect(r / "state" / "radar.db")
+    conn.execute("DELETE FROM raw_rankings")
+    conn.commit()
+    conn.close()
+    p = radar.build(Config(radar_dir=r), NOW)
+    assert "No leaderboards read yet" in table(p, "Webull leaderboards")["note"]

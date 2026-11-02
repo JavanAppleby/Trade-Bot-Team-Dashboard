@@ -90,6 +90,8 @@ CREATE TABLE screener_outcomes (candidate_id INTEGER PRIMARY KEY, computed_at TE
   sim_outcome TEXT, sim_result_pct TEXT, sim_result_r TEXT, tg_release TEXT NOT NULL);
 CREATE TABLE events (id INTEGER PRIMARY KEY, at TEXT NOT NULL, level TEXT NOT NULL, kind TEXT NOT NULL,
   symbol TEXT, message TEXT NOT NULL);
+CREATE TABLE raw_rankings (id INTEGER PRIMARY KEY, trading_day TEXT NOT NULL, received_at TEXT NOT NULL,
+  feed TEXT NOT NULL, body_json TEXT NOT NULL);
 """
 
 PILOT_DDL = """
@@ -161,6 +163,15 @@ def make_radar(root: Path) -> Path:
                                  1, 1, "abc", "tg 1.1.1", iso(NOW))],
         "screener_observations": [(1, iso(NOW), "2.31", "2.30", "2.31", "0.0043", "1234567", None)],
         "events": [(1, iso(NOW), "INFO", "start", None, "Radar started")],
+        "raw_rankings": [
+            (1, DAY, iso(NOW - timedelta(seconds=90)), "PRE_MARKET", json.dumps({"data": [{"symbol": "OLD"}]})),
+            (2, DAY, iso(NOW - timedelta(seconds=30)), "PRE_MARKET", json.dumps({"data": [
+                {"symbol": "WXYZ", "price": "5.10", "change_ratio": "0.62", "volume": "9000000", "relative_volume_10d": "14.2"},
+                {"symbol": "abcd", "price": "2.31", "change_ratio": "0.283", "volume": "1234567"},
+                {"symbol": "WXYZ", "price": "5.00"},
+                {"symbol": "ZERO", "price": "0.000000", "change_ratio": "0.2"}]})),
+            (3, DAY, iso(NOW - timedelta(minutes=10)), "RVOL_10D", json.dumps([{"symbol": "QQQQ", "price": "1.00"}])),
+        ],
     })
     lines = [json.dumps({"format": 1, "candidate_id": 1, "trading_day": DAY, "session": "PRE", "symbol": "ABCD",
                          "found_at": iso(NOW), "price": "2.31", "ask": "2.31", "change_pct": "0.283", "tags": ["gap_and_hold"]})]
