@@ -12,7 +12,8 @@ A local, read-only web page showing Guardian, Radar, Scout and Pilot. Design: `d
   keys in `guardian.RATCHET_KEYS` only.
 - Standard library only (plus `tzdata`). Never import `webull*`, `trade_guardian`, `radar`, `scout`
   or `pilot`; `tests/test_safety.py` checks it.
-- The server binds 127.0.0.1 only, answers GET only, and checks the Host header.
+- The server binds 127.0.0.1, plus the owner's `lan_address` (a private or Tailscale address only, off by
+  default; never 0.0.0.0). It answers GET only and checks the Host header.
 - Bot and web text reaches the page as text only (`textContent`); `app.js` uses no HTML sinks.
 - A panel never crashes the page: missing, stale or corrupt sources show NO DATA, STALE or ERROR.
 - Tests never touch the real bot folders or the network: fixtures build copies in a temp folder.

@@ -215,3 +215,37 @@ def test_server_refuses_other_hosts(server):
     _, port = server
     assert get(port, "/api/overview", host=f"evil.example:{port}")[0] == 403
     assert get(port, "/", host=f"localhost:{port}")[0] == 200
+
+
+def test_phone_address_is_allowed_only_when_set(bots):
+    from http.server import ThreadingHTTPServer
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    srv = ThreadingHTTPServer(("127.0.0.1", port), make_handler(Dashboard(bots), port, "192.168.20.7"))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        assert get(port, "/", host=f"192.168.20.7:{port}")[0] == 200
+        assert get(port, "/", host=f"192.168.20.8:{port}")[0] == 403
+        assert get(port, "/api/overview", host=f"192.168.20.7:{port}", method="POST")[0] == 405
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_serve_all_keeps_this_pc_when_phone_address_is_gone(bots):
+    import dataclasses
+    from dashboard.server import serve_all
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    # 192.0.2.x is a documentation range no PC owns, so binding it fails like a changed home address.
+    cfg = dataclasses.replace(bots, port=port, lan_address="192.0.2.1")
+    servers = serve_all(cfg)
+    try:
+        assert [s.server_address[0] for s in servers] == ["127.0.0.1"]
+    finally:
+        for s in servers:
+            s.server_close()

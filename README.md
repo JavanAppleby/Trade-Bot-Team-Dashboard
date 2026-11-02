@@ -4,7 +4,8 @@ One page on this PC that shows the live status of the four bots (Guardian, Radar
 with a click-through for each item. It **only reads** their files: it never trades, never sends a
 Webull request, never logs in, and never reads `.env`, `conf\`, token files or the account number.
 
-The page is at **http://127.0.0.1:8765/**. Only this PC can open it.
+The page is at **http://127.0.0.1:8765/**. Only this PC can open it, unless you turn on phone
+access (below).
 
 ## What you see
 
@@ -52,6 +53,27 @@ bots, but doing it outside US hours means nothing distracts you while a bot is t
 
 3. Double-click **`Start Dashboard.bat`**. A window opens, then the page opens in your browser.
    Keep the window open while you use the page. Close the window to stop the dashboard.
+
+## Open it on your phone (home Wi-Fi)
+
+Off until you turn it on. Anyone on your home Wi-Fi could then open the page (there is no password),
+so skip this if guests use the same Wi-Fi network.
+
+1. If there is no `config.toml` in `E:\Dashboard`, copy `config.example.toml` to `config.toml`.
+2. In `config.toml`, change the `lan_address` line to this PC's home-network address:
+
+   ```
+   lan_address = '192.168.20.7'
+   ```
+
+3. Close the dashboard's window and double-click `Start Dashboard.bat`. If Windows asks whether to
+   allow Python on networks, tick **Private networks** only and click **Allow**.
+4. On your phone, connected to home Wi-Fi, open **http://192.168.20.7:8765/**.
+
+It works only on home Wi-Fi, not over mobile data. If the phone link stops working, the router may
+have given the PC a new address: the dashboard's window says "cannot listen on 192.168.20.7".
+Run `ipconfig` in PowerShell, find the "IPv4 Address" under your Wi-Fi or Ethernet adapter, and
+put that in `lan_address`. (Reserving the address in your router's settings stops it changing.)
 
 ## Update
 

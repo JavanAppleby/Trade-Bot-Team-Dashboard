@@ -7,8 +7,15 @@ radar_dir = 'E:\Radar'
 scout_dir = 'E:\Scout'
 pilot_dir = 'E:\Pilot'
 
-# The page is served at http://127.0.0.1:<port>/ and only on this PC.
+# The page is served at http://127.0.0.1:<port>/ on this PC.
 port = 8765
+
+# To open the dashboard on your phone over home Wi-Fi, put this PC's home-network address here,
+# for example lan_address = '192.168.20.7'; the phone then opens http://192.168.20.7:8765/.
+# Anyone on your Wi-Fi could open it too (there is no password), so leave it empty on shared Wi-Fi.
+# Only a home-network (192.168..., 10..., 172.16-31...) or Tailscale (100.64-127...) address is accepted.
+# Empty means this PC only.
+lan_address = ''
 
 # How often the page asks for fresh data (seconds).
 refresh_s = 5

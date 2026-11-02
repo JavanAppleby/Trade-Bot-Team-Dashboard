@@ -13,7 +13,7 @@ it counts as stale. Repo: https://github.com/JavanAppleby/Trade-Bot-Team-Dashboa
 | The owner's install | `E:\Dashboard` (installed outside US hours, steps in the README) |
 | GitHub repo | one the owner creates (suggested name `Trade-Dashboard`); Claude asks for the URL before the first push |
 | Program | Python 3.13, **standard library only** (no packages to install, nothing that can pull in broker code) |
-| Page | `http://127.0.0.1:8765/` (bound to 127.0.0.1 only, never 0.0.0.0, so no other device can reach it) |
+| Page | `http://127.0.0.1:8765/` (bound to 127.0.0.1, never 0.0.0.0). Phone access on home Wi-Fi, at the owner's request (2 Nov): `lan_address` in `config.toml` adds a second listener on that one home-network (or Tailscale) address, off by default; the same Host check, GET-only routes and read-only rules apply |
 | Launcher | `Start Dashboard.bat`: starts the server and opens the page in the default browser |
 | Refresh | the page asks the server for fresh data every 5 s; the server reads the files at that moment (no cache older than 2 s) |
 | Its own files | `E:\Dashboard\logs\` only (its own log). It keeps no database |
@@ -39,7 +39,7 @@ documents every key.
 4. **Never read:** any `.env`, any `conf\` folder, token files, Guardian's `meta` table (it holds
    `account_id`), Guardian's `config.toml` except the named keys in section 4.3. File paths are
    built from a fixed list in code; nothing on the page can ask for an arbitrary path.
-5. **No network** except answering the browser on 127.0.0.1. No Webull, no logins, no imports of
+5. **No network** except answering the browser on 127.0.0.1 (and on `lan_address` when the owner sets it). No Webull, no logins, no imports of
    `trade_guardian`, `radar`, `scout`, `pilot`, `webull*`. A boundary test checks the imports.
 6. **Never crashes:** each panel is read on its own; any error (missing file, bad JSON, a
    database changed shape) becomes that panel's "no data" or "error: ..." line, and the other

@@ -28,3 +28,16 @@ def test_example_loads(tmp_path):
 def test_refused(data):
     with pytest.raises(ConfigError):
         config_from_dict(data)
+
+
+@pytest.mark.parametrize("raw, want", [("192.168.20.7", "192.168.20.7"), (" 10.0.0.5 ", "10.0.0.5"),
+                                       ("172.20.1.2", "172.20.1.2"), ("100.101.102.103", "100.101.102.103"),
+                                       ("", "")])
+def test_lan_address_accepted(raw, want):
+    assert config_from_dict({"lan_address": raw}).lan_address == want
+
+
+@pytest.mark.parametrize("raw", ["0.0.0.0", "127.0.0.1", "8.8.8.8", "203.0.113.9", "my-pc", "::1", 5])
+def test_lan_address_refuses_everything_but_home_or_tailscale(raw):
+    with pytest.raises(ConfigError):
+        config_from_dict({"lan_address": raw})

@@ -1,4 +1,5 @@
-"""The local web server: 127.0.0.1 only, GET only, a fixed set of routes.
+"""The local web server: 127.0.0.1 (plus the home-network address when lan_address is set), GET only,
+a fixed set of routes.
 
 /                      the page (static/index.html, app.js, style.css)
 /api/overview          every panel, read fresh
@@ -73,8 +74,8 @@ class Dashboard:
                     "tables": [], "texts": []}
 
 
-def make_handler(app: Dashboard, port: int) -> type[BaseHTTPRequestHandler]:
-    allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+def make_handler(app: Dashboard, port: int, lan_address: str = "") -> type[BaseHTTPRequestHandler]:
+    allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"} | ({f"{lan_address}:{port}"} if lan_address else set())
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "TradeDashboard"
@@ -136,8 +137,23 @@ class LocalServer(ThreadingHTTPServer):
         super().server_bind()
 
 
-def serve(cfg: Config) -> ThreadingHTTPServer:
-    return LocalServer(("127.0.0.1", cfg.port), make_handler(Dashboard(cfg), cfg.port))
+def serve(cfg: Config, app: Dashboard | None = None, host: str = "127.0.0.1") -> ThreadingHTTPServer:
+    app = app or Dashboard(cfg)
+    return LocalServer((host, cfg.port), make_handler(app, cfg.port, cfg.lan_address))
+
+
+def serve_all(cfg: Config) -> list[ThreadingHTTPServer]:
+    """This PC's server, plus the home-network one when lan_address is set. A home-network address the
+    PC no longer has (the router gave it a new one) is logged and skipped; this PC's server still runs."""
+    app = Dashboard(cfg)
+    servers = [serve(cfg, app)]
+    if cfg.lan_address:
+        try:
+            servers.append(serve(cfg, app, cfg.lan_address))
+        except OSError as exc:
+            log.warning("cannot listen on %s:%s for phones (is that still this PC's address? see the README): %s",
+                        cfg.lan_address, cfg.port, exc)
+    return servers
 
 
 def _setup_logging(root: Path) -> None:
@@ -162,18 +178,23 @@ def main(argv: list[str] | None = None) -> int:
         log.error("%s", exc)
         return 2
     try:
-        server = serve(cfg)
+        servers = serve_all(cfg)
     except OSError as exc:
         log.error("cannot use port %s (is the dashboard already running?): %s", cfg.port, exc)
         return 2
     url = f"http://127.0.0.1:{cfg.port}/"
     log.info("Trade Dashboard %s at %s (read-only). Close this window to stop it.", __version__, url)
+    if len(servers) > 1:
+        log.info("On your phone (home Wi-Fi): http://%s:%s/", cfg.lan_address, cfg.port)
     if cfg.open_browser and not args.no_browser:
         threading.Timer(0.5, webbrowser.open, (url,)).start()
+    for extra in servers[1:]:
+        threading.Thread(target=extra.serve_forever, daemon=True).start()
     try:
-        server.serve_forever()
+        servers[0].serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        server.server_close()
+        for server in servers:
+            server.server_close()
     return 0
