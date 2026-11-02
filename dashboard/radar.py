@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from dashboard import safe, times
+from dashboard import safe, setups, times
 from dashboard import view as v
 from dashboard.config import Config
 
@@ -14,6 +14,7 @@ from dashboard.config import Config
 # Radar's ranking feeds (radar.models.Feed), in the order the page shows them.
 FEEDS = {"PRE_MARKET": "Pre-market gainers", "DAY_1": "Day gainers", "AFTER_MARKET": "After-hours gainers",
          "MIN_5": "Fast movers (5 min)", "MIN_3": "Fast movers (3 min)", "RVOL_10D": "Volume surges (vs 10-day)"}
+ORDER_NOTE = {"RVOL_10D": "highest volume against the 10-day average first"}  # the others: biggest % change first
 WRAPPERS = ("data", "list", "items", "result", "rows")  # radar.webull.parse._WRAPPERS
 LEADERBOARD_ROWS = 50
 
@@ -47,6 +48,9 @@ def build(cfg: Config, now: datetime) -> dict:
     v.guarded(p, "Finds", lambda: found.update(_finds(p, paths)))
     day = found.get("day")
     v.guarded(p, "Leaderboards", lambda: _leaderboards(p, paths, found.get("ids", {}), now, cfg.radar_stale_s))
+    v.guarded(p, "Entry setups", lambda: setups.build_section(p, cfg, now))
+    # The ranked entry setups lead the tab, above the finds and the leaderboards.
+    p["tables"].sort(key=lambda t: not t["title"].startswith("Entry setups"))
     v.guarded(p, "Handed to Pilot", lambda: _handoff(p, paths, day))
     v.guarded(p, "Events", lambda: _events(p, paths))
     p["alert"] = p["badge"] in (v.STALE, v.ERROR)
@@ -81,8 +85,8 @@ def _finds(p: dict, paths: dict) -> list:
         [[r["symbol"], times.show_short(r["found_at"]), v.nice(r["session"]), v.price(r["price"]), v.pct(r["change_pct"]),
           v.num(r["rel_volume_10d"], 1), v.pct(r["spread_pct"]), v.nice(_json(r["tags_json"])),
           v.nice(_json(r["flags_json"])), v.nice(r["feeds"]), times.show_short(r["last_seen_at"])] for r in rows],
-        [f"{r['id']}" for r in rows], sort=("Change", True),
-        note="Stocks that passed all of Radar's filters. Click a column heading to sort by it."
+        [f"{r['id']}" for r in rows], sort=("Found", True),
+        note="Stocks that passed all of Radar's filters, newest first. Click a column heading to sort by it."
         if rows else "Nothing found yet."))
     return {"day": day, "ids": {r["symbol"]: str(r["id"]) for r in rows}} if day else {}
 
@@ -143,7 +147,9 @@ def _leaderboards(p: dict, paths: dict, finds: dict, now: datetime, stale_s: flo
                 break
         p["tables"].append(v.table(
             f"Leaderboard · {name}", ["Rank", "Symbol", "Price", "Change", "Volume", "Rel vol", "Radar"],
-            rows, keys, note=f"{age_note} Webull's order, top {LEADERBOARD_ROWS}; prices as read, not live.".strip()))
+            rows, keys, note=(f"{age_note} Webull's order: {ORDER_NOTE.get(r['feed'], 'biggest % change first')}, "
+                             f"top {LEADERBOARD_ROWS}. This is not an entry ranking (see Entry setups). "
+                             "Prices as read, not live.").strip()))
 
 
 def _handoff(p: dict, paths: dict, day: str | None) -> None:
@@ -172,6 +178,8 @@ def _events(p: dict, paths: dict) -> None:
 
 
 def detail(cfg: Config, key: str) -> dict:
+    if key.startswith("setup:"):
+        return setups.detail(cfg, int(key.removeprefix("setup:")))
     cid = int(key)
     paths = _paths(cfg)
     with safe.open_db(paths["db"]) as conn:

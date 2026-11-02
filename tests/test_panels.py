@@ -205,7 +205,7 @@ def test_plain_english_wording():
 def test_radar_leaderboards_and_sort(bots):
     p = radar.build(bots, NOW)
     finds = table(p, "Radar's finds")
-    assert finds["sort"] == {"col": "Change", "desc": True}
+    assert finds["sort"] == {"col": "Found", "desc": True}
     titles = [t["title"] for t in p["tables"] if t["title"].startswith("Leaderboard")]
     assert titles == ["Leaderboard · Pre-market gainers", "Leaderboard · Volume surges (vs 10-day)"]
     pre = table(p, "Leaderboard · Pre-market gainers")
@@ -214,7 +214,7 @@ def test_radar_leaderboards_and_sort(bots):
     assert pre["rows"][1][:2] == ["2", "ABCD"] and pre["rows"][1][6] == "Radar find"
     assert pre["rows"][2][:3] == ["3", "ZERO", ""]  # the repeated WXYZ keeps rank 1; a 0 price is blank
     assert pre["keys"] == [None, finds["keys"][0], None]
-    assert pre["note"].startswith("Read 30 s ago")
+    assert pre["note"].startswith("Read 30 s ago") and "biggest % change first" in pre["note"]
     assert table(p, "Leaderboard · Volume surges")["note"].startswith("Stale: read 10 min ago")
 
 
@@ -228,3 +228,74 @@ def test_radar_no_leaderboards_yet(tmp_path):
     conn.close()
     p = radar.build(Config(radar_dir=r), NOW)
     assert "No leaderboards read yet" in table(p, "Webull leaderboards")["note"]
+
+
+CHECK_NAMES = ("quote_fresh", "bars_fresh", "session_ok", "price_range", "change", "spread", "dollars_15m", "leg",
+               "above_pmh", "above_vwap", "rvol", "pullback")
+
+
+def setup_json(symbol, failed=(), **over):
+    st = {"symbol": symbol, "price": "2.00", "ask": "2.00", "bid": "1.99", "spread_pct": "0.005",
+          "change_pct": "0.45", "vwap": "1.70", "premarket_high": "1.90", "day_high": "2.06", "leg_min": "22",
+          "rvol": "3.2", "dollars_15m": "812345", "tags": ["pre_market"],
+          "checks": {c: c not in failed for c in CHECK_NAMES}, "passed": not failed, "failed": list(failed)}
+    st.update(over)
+    return json.dumps(st)
+
+
+def add_decisions(pilot_dir, rows):
+    import sqlite3
+    conn = sqlite3.connect(pilot_dir / "state" / "pilot.db")
+    conn.execute("DELETE FROM decisions")
+    for i, (symbol, age_s, reason, st, sz) in enumerate(rows, start=10):
+        at = (NOW - timedelta(seconds=age_s)).isoformat()
+        conn.execute("INSERT INTO decisions (id, trading_day, at, symbol, session, taken, reason, setup_json, "
+                     "sizing_json, input_ages_json) VALUES (?, ?, ?, ?, 'PRE', ?, ?, ?, ?, '{\"quote\": 0.4}')",
+                     (i, "2026-11-03", at, symbol, int(reason == "taken"), reason, st, sz))
+    conn.commit()
+    conn.close()
+
+
+def test_entry_setups_ranked_by_pilots_checks(bots):
+    sz_good = json.dumps({"entry": "2.00", "stop": "1.88", "reward_target": "2.36", "reward_risk": "3.0", "shares": 80})
+    sz_ok = json.dumps({"entry": "2.00", "stop": "1.90", "reward_target": "2.15", "reward_risk": "1.5"})
+    add_decisions(bots.pilot_dir, [
+        ("LATE", 20, "setup_not_passed", setup_json("LATE", ("pullback",), day_high="2.00"), None),
+        ("GOOD", 40, "setup_not_passed", setup_json("GOOD", ("leg", "rvol", "pullback")), None),
+        ("GOOD", 10, "max_open", setup_json("GOOD"), sz_good),
+        ("BEST", 5, "taken", setup_json("BEST"), json.dumps({"entry": "2.00", "reward_risk": "2.0"})),
+        ("FAR", 5, "setup_not_passed", setup_json("FAR", ("leg", "above_vwap", "rvol"), leg_min="4"), None),
+        ("DATA", 5, "setup_not_passed", setup_json("DATA", ("quote_fresh",)), None),
+        ("OLD", 200, "setup_not_passed", setup_json("OLD"), sz_ok),
+        ("GONE", 900, "setup_not_passed", setup_json("GONE"), sz_ok),
+    ])
+    p = radar.build(bots, NOW)
+    t = p["tables"][0]
+    assert t["title"].startswith("Entry setups")
+    rows = [dict(zip(t["columns"], r)) for r in t["rows"]]
+    assert [r["Symbol"] for r in rows] == ["GOOD", "BEST", "LATE", "FAR", "OLD", "DATA"]
+    assert [r["Rank"] for r in rows] == ["1", "2", "3", "4", "5", "6"]
+    assert rows[0]["Status"] == "Setup now" and rows[0]["Reward:risk"] == "3.0" and rows[0]["Stop"] == "1.88"
+    assert rows[0]["Pilot's call"] == "Max open" and rows[1]["Pilot's call"] == "Taken"
+    assert rows[2]["Status"] == "Close" and rows[2]["Not yet"] == "Shallow pullback (at the high)"
+    assert rows[3]["Status"] == "Not close" and rows[3]["Not yet"].startswith("Leg old enough (4 min); Well above VWAP")
+    assert rows[4]["Status"] == "Unknown: not re-checked"
+    assert rows[5]["Status"] == "Unknown: no fresh quote"
+    assert rows[0]["Vs VWAP"] == "17.6%" and rows[0]["Off high"] == "2.9%" and rows[0]["Rel vol"] == "3.2x"
+    assert "1 symbol(s) Pilot last checked more than 10 minutes ago are hidden" in t["note"]
+    assert "Unproven until Pilot's paper gate" in t["note"]
+    assert p["headline"].endswith("2 setups now")
+    d = radar.detail(bots, t["keys"][0])
+    assert d["title"].startswith("Entry setup · GOOD")
+    assert ["Shallow pullback", "Pass"] in d["tables"][0]["rows"]
+    assert ["Reward:risk", "3.00"] in d["tables"][1]["rows"]
+    late = radar.detail(bots, t["keys"][2])
+    assert ["Shallow pullback", "Fail"] in late["tables"][0]["rows"]
+    assert late["tables"][1]["note"].startswith("Pilot sizes a stock only")
+
+
+def test_entry_setups_without_pilot(tmp_path):
+    from conftest import make_radar
+    p = radar.build(Config(radar_dir=make_radar(tmp_path), pilot_dir=tmp_path / "nope"), NOW)
+    assert p["tables"][0]["title"].startswith("Entry setups")
+    assert "Pilot isn't installed yet" in p["tables"][0]["note"]

@@ -13,13 +13,13 @@ const BADGES = { "LIVE": ["Live", "live"], "STALE": ["Stale", "stale"], "ERROR":
 // Columns whose values show as coloured pills, and how each value is coloured.
 const PILL_COLS = new Set(["Level", "Status", "Protection", "State", "Taken", "Enabled", "Gap open", "Stale",
   "Halt open", "Breakeven armed", "Shadow", "Class", "Session", "Type", "Fresh catalyst",
-  "Event before next session", "Macro next session", "Kind", "Why", "Radar"]);
+  "Event before next session", "Macro next session", "Kind", "Why", "Radar", "Result"]);
 const BAD_WHEN_YES = new Set(["Gap open", "Stale", "Halt open", "Shadow"]);
 const TIME_COL = /^(time|found|opened|created|first|first seen|first buy|last ok|last seen|updated|closed|written|expires|flatten at)/i;
 const SIGNED_COLS = new Set(["P&L $", "R", "Change"]);
-const RED = ["error", "critical", "at risk", "stopped", "rejected", "stale", "http error", "timeout", "unprotected"];
+const RED = ["fail", "error", "critical", "at risk", "stopped", "rejected", "stale", "http error", "timeout", "unprotected"];
 const AMBER = ["warning", "starting", "intent", "pending", "partial", "unknown", "backoff"];
-const GREEN = ["radar find", "ok", "working", "protected", "open", "live", "running", "filled", "yes", "managed", "breakeven",
+const GREEN = ["pass", "radar find", "ok", "working", "protected", "open", "live", "running", "filled", "yes", "managed", "breakeven",
   "target"];
 const BLUE = ["pre-market", "regular hours", "after hours", "overnight", "wire", "filing", "stop", "r step",
   "atr trail", "pct trail", "initial", "flatten"];
@@ -38,7 +38,9 @@ function tone(col, value) {
   if (!v) return "";
   if (BAD_WHEN_YES.has(col)) return v === "yes" ? "red" : "muted";
   if (col === "Protection" && v === "closed") return "muted";
-  if (v === "no" || v === "closed" || v === "disabled") return "muted";
+  if (v === "no" || v === "closed" || v === "disabled" || v === "not close") return "muted";
+  if (v === "setup now") return "green";
+  if (v === "close") return "amber";
   if (RED.some((w) => v.startsWith(w))) return "red";
   if (AMBER.some((w) => v.startsWith(w))) return "amber";
   if (GREEN.some((w) => v.startsWith(w))) return "green";
