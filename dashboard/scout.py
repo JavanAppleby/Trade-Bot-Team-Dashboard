@@ -113,6 +113,54 @@ def _macro(p: dict, paths: dict) -> None:
                                [[times.show(e.get("event_at")), v.nice(e.get("kind")), e.get("prior"), e.get("street"),
                                  v.nice(e.get("sources")), e.get("sources_agree")] for e in events],
                                note="" if events else "None listed."))
+    _results(p, data.get("results"))
+
+
+def _month(value: object) -> str:
+    text = str(value or "")
+    try:
+        return datetime.strptime(text[:7], "%Y-%m").strftime("%b %Y")
+    except ValueError:
+        return ""
+
+
+def _k(value: object) -> str:
+    n = v.dec(value)
+    return "" if n is None else f"{n:+,.0f}k"
+
+
+def _rate(value: object) -> str:
+    n = v.dec(value)
+    return "" if n is None else f"{n}%"
+
+
+def _results(p: dict, res: object) -> None:
+    """Scout's BLS results (jobs, unemployment, CPI): record only, never used in an answer."""
+    title, cols = "Jobs and inflation results", ["Result", "Month", "Value", "Before", "Expected", "Vs expected"]
+    note = "From the BLS, as Scout first saw them. Expected values are Nowflation's. Record only."
+    if not isinstance(res, dict) or not res:
+        p["tables"].append(v.table(title, [], [], note="No results yet (Scout reads the BLS each morning)."))
+        return
+    rows = []
+    pay = res.get("payrolls") if isinstance(res.get("payrolls"), dict) else None
+    if pay:
+        rows.append(["Jobs added" + (" (first estimate)" if pay.get("preliminary") else ""), _month(pay.get("month")),
+                     _k(pay.get("change_k")), _k(pay.get("prior_change_k")), _k(pay.get("street_k")),
+                     _k(pay.get("vs_street_k"))])
+    if isinstance(res.get("jobs_trend"), str):
+        rows.append(["Jobs trend (3 months)", "", v.nice(res.get("jobs_trend")),
+                     f"average {_k(res.get('jobs_trend_avg_k'))} a month" if res.get("jobs_trend_avg_k") is not None
+                     else "", "", ""])
+    un = res.get("unemployment") if isinstance(res.get("unemployment"), dict) else None
+    if un:
+        rows.append(["Unemployment rate", _month(un.get("month")), _rate(un.get("rate")), _rate(un.get("prior")), "", ""])
+    cpi = res.get("cpi") if isinstance(res.get("cpi"), dict) else None
+    if cpi:
+        exp = cpi.get("nowflation_forecast") if cpi.get("nowflation_forecast") is not None else cpi.get("street")
+        off = cpi.get("vs_nowflation") if cpi.get("vs_nowflation") is not None else cpi.get("vs_street")
+        rows.append(["CPI, a year", _month(cpi.get("month")), _rate(cpi.get("yoy_pct")), _rate(cpi.get("prior_yoy_pct")),
+                     _rate(exp), f"{off:+g} pts" if isinstance(off, (int, float)) and not isinstance(off, bool) else ""])
+    p["tables"].append(v.table(title, cols, rows, note=note))
 
 
 def _jason(p: dict, paths: dict) -> None:

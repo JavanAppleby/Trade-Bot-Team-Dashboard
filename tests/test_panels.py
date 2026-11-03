@@ -299,3 +299,17 @@ def test_entry_setups_without_pilot(tmp_path):
     p = radar.build(Config(radar_dir=make_radar(tmp_path), pilot_dir=tmp_path / "nope"), NOW)
     assert p["tables"][0]["title"].startswith("Entry setups")
     assert "Pilot isn't installed yet" in p["tables"][0]["note"]
+
+
+def test_scout_jobs_and_inflation_results(bots):
+    p = scout.build(bots, NOW)
+    res = next(t for t in p["tables"] if t["title"] == "Jobs and inflation results")
+    rows = {r[0]: r for r in res["rows"]}
+    assert rows["Jobs added (first estimate)"] == ["Jobs added (first estimate)", "Oct 2026", "+20k", "+60k", "+65k", "-45k"]
+    assert rows["Jobs trend (3 months)"][2] == "Weak" and "+40k" in rows["Jobs trend (3 months)"][3]
+    assert rows["Unemployment rate"][2:4] == ["4.3%", "4.2%"]
+    assert rows["CPI, a year"][2:] == ["3.2%", "3.1%", "3.25%", "-0.05 pts"]
+    # an older Scout without results: a plain note, no crash
+    holder = {"tables": []}
+    scout._results(holder, None)
+    assert holder["tables"][0]["rows"] == [] and "No results yet" in holder["tables"][0]["note"]

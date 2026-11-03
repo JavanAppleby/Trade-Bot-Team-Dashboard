@@ -198,7 +198,13 @@ def make_scout(root: Path, *, hb_age_s: float = 5) -> Path:
     (st / "facts" / f"{DAY}.jsonl").write_text(json.dumps(fact) + "\nnot json\n")
     (st / "macro" / f"{DAY}.json").write_text(json.dumps({"format": 1, "at": iso(NOW), "inflation_regime": "cooling",
         "regime_status": "ok", "vix": {"date": DAY, "close": 17.2}, "events": [{"kind": "CPI", "event_at": iso(NOW),
-        "sources": ["bls"], "sources_agree": True}], "forecast_lean": None}))
+        "sources": ["bls"], "sources_agree": True}], "forecast_lean": None,
+        "results": {"payrolls": {"month": "2026-10", "change_k": 20.0, "prior_change_k": 60.0, "preliminary": True,
+                                 "street_k": 65, "vs_street_k": -45.0},
+                    "jobs_trend": "weak", "jobs_trend_avg_k": 40,
+                    "unemployment": {"month": "2026-10", "rate": 4.3, "prior": 4.2},
+                    "cpi": {"month": "2026-09", "yoy_pct": 3.2, "prior_yoy_pct": 3.1, "street": None,
+                            "nowflation_forecast": 3.25, "vs_street": None, "vs_nowflation": -0.05}}}))
     (st / "jason" / "snapshots.jsonl").write_text(json.dumps({"format": 1, "first_seen_at": iso(NOW), "setups": [
         {"symbol": "ABCD", "direction": "long", "session_date": DAY, "expires": iso(NOW), "attribution": "Jason",
          "levels": [{"kind": "entry", "readings": ["2.40"]}]}]}) + "\n")
