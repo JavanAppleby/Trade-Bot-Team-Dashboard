@@ -114,6 +114,7 @@ every 30 s). `stopped: true` shows STOPPED.
 | Each source: enabled, status, last OK, last error, gap open | `scout.heartbeat` `sources` |
 | LLM spend today and cap reached; Jason level files and when they expire; whether the macro calendar covers the next 45 days | `scout.heartbeat` `llm`, `levels`, `calendar_covers_next_45d` |
 | **News feed**, newest first (today and yesterday): time first seen, ticker, kind (wire, filing, halt, Discord...), class, source, title, link | `state\facts\<date>.jsonl` |
+| **Jobs and inflation results** (owner's request, 4 Nov): jobs added vs expected, the 3-month jobs trend, unemployment, CPI a year vs Nowflation's forecast. Record only | `state\macro\<date>.json` `results` (Scout's `bls_data`, SCOUT_SPEC 7.7) |
 | Filter by ticker, kind or source; click a fact for all its fields | same |
 | **Macro**: inflation regime, VIX, the day's scheduled events with sources | `state\macro\<today>.json` |
 | **Jason's levels**: each setup's symbol, direction, levels, expiry | `state\jason\snapshots.jsonl`, the last line |
